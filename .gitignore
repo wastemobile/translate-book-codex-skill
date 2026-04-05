@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+dist/
+build/
+*.htmlz
+*_temp/
+test-output/

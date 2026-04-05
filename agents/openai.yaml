@@ -1,0 +1,4 @@
+interface:
+  display_name: "Translate Book"
+  short_description: "Four-stage book translation with Codex, Ollama, Pandoc, and Calibre"
+  default_prompt: "Use $translate-book to convert a book into chunks, translate with Codex plus local Ollama stages, audit risky chunks, and build the final ebook outputs."
