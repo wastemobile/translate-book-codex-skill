@@ -15,6 +15,29 @@ if str(SCRIPT_DIR) not in sys.path:
 import merge_and_build  # noqa: E402
 
 
+class OutputFormatSelectionTests(unittest.TestCase):
+    def test_defaults_to_original_input_extension(self):
+        config = {"input_file": "/tmp/book.epub"}
+
+        formats = merge_and_build.resolve_output_formats(config, None)
+
+        self.assertEqual(formats, [".epub"])
+
+    def test_defaults_to_pdf_when_source_is_pdf(self):
+        config = {"input_file": "/tmp/book.pdf"}
+
+        formats = merge_and_build.resolve_output_formats(config, None)
+
+        self.assertEqual(formats, [".pdf"])
+
+    def test_accepts_multiple_requested_formats(self):
+        config = {"input_file": "/tmp/book.epub"}
+
+        formats = merge_and_build.resolve_output_formats(config, "epub,pdf,docx")
+
+        self.assertEqual(formats, [".epub", ".pdf", ".docx"])
+
+
 class GenerateFormatTests(unittest.TestCase):
     def _write_file(self, path, content="data"):
         Path(path).write_text(content, encoding="utf-8")
@@ -160,6 +183,50 @@ class MissingCoverPathTests(unittest.TestCase):
 
             self.assertNotEqual(exc.exception.code, 0)
             generate_formats_mock.assert_not_called()
+
+
+class MainFormatSelectionTests(unittest.TestCase):
+    def test_main_uses_original_input_format_when_formats_not_provided(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch.object(
+                merge_and_build, "load_config", return_value={"input_file": "/tmp/source.epub"}
+            ), mock.patch.object(
+                merge_and_build, "get_lang_config", return_value={"lang_attr": "zh-CN"}
+            ), mock.patch.object(
+                merge_and_build, "merge_markdown_files", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "convert_md_to_html", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "add_toc", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "generate_formats", return_value=True
+            ) as generate_formats_mock, mock.patch.object(
+                sys, "argv", ["merge_and_build.py", "--temp-dir", temp_dir]
+            ):
+                merge_and_build.main()
+
+            self.assertEqual(generate_formats_mock.call_args.args[2], [".epub"])
+
+    def test_main_passes_requested_formats_to_generator(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch.object(
+                merge_and_build, "load_config", return_value={"input_file": "/tmp/source.epub"}
+            ), mock.patch.object(
+                merge_and_build, "get_lang_config", return_value={"lang_attr": "zh-CN"}
+            ), mock.patch.object(
+                merge_and_build, "merge_markdown_files", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "convert_md_to_html", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "add_toc", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "generate_formats", return_value=True
+            ) as generate_formats_mock, mock.patch.object(
+                sys, "argv", ["merge_and_build.py", "--temp-dir", temp_dir, "--formats", "epub,pdf"]
+            ):
+                merge_and_build.main()
+
+            self.assertEqual(generate_formats_mock.call_args.args[2], [".epub", ".pdf"])
 
 
 if __name__ == "__main__":

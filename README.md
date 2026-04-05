@@ -11,7 +11,7 @@ The conversion and packaging pipeline is inherited from the original `translate-
 
 - Calibre `ebook-convert` converts source books into HTMLZ
 - Pandoc converts HTML to Markdown and Markdown back to HTML
-- validated chunks are merged and packaged into `html`, `docx`, `epub`, and `pdf`
+- validated chunks are merged and packaged into selected final formats such as `docx`, `epub`, or `pdf`
 
 ## Upstream Reference
 
@@ -59,7 +59,21 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 4. Run `scripts/ollama_stage_refine.py`.
 5. Run `scripts/chunk_audit.py --promote`.
 6. Let Codex fix flagged chunks into `output_chunk*.md`.
-7. Run `scripts/merge_and_build.py`.
+7. Choose output format(s). If you do not specify them, the default is the original source format.
+8. Run `scripts/merge_and_build.py --formats "<format[,format...]>"`.
+
+## Output Formats
+
+- The build step no longer assumes all of `docx`, `epub`, and `pdf`.
+- The default final output format is the original source file format.
+- You may request multiple formats, for example `epub,pdf`.
+- `book.html` and `book_doc.html` are still generated as intermediate/final HTML artifacts for packaging.
+
+Examples:
+
+- source `book.epub` with no explicit format request: final default is `epub`
+- source `book.pdf` with no explicit format request: final default is `pdf`
+- explicit request `docx,epub`: generate both `book.docx` and `book.epub`
 
 ## Status
 

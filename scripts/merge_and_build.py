@@ -3,7 +3,7 @@
 merge_and_build.py - Merge translated pages and build final outputs
 Combines original steps 4-7: merge -> HTML -> TOC -> DOCX/EPUB/PDF
 
-Usage: merge_and_build.py --temp-dir <path> [--title <title>] [--author <author>] [--lang <lang>]
+Usage: merge_and_build.py --temp-dir <path> [--title <title>] [--author <author>] [--lang <lang>] [--formats epub,pdf]
 """
 
 import os
@@ -123,6 +123,39 @@ def load_config(temp_dir):
 def natural_sort_key(text):
     """Natural sorting key for filenames with numbers"""
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', text)]
+
+
+def resolve_output_formats(config, formats_arg):
+    """Resolve requested output formats.
+
+    If no formats are provided, default to the original input file format when it is
+    one of .pdf, .docx, or .epub. Otherwise fall back to .epub.
+    """
+    allowed = {'.docx', '.epub', '.pdf'}
+
+    if formats_arg:
+        formats = []
+        for item in formats_arg.split(','):
+            item = item.strip().lower()
+            if not item:
+                continue
+            if not item.startswith('.'):
+                item = f'.{item}'
+            if item not in allowed:
+                print(f"Error: Unsupported output format: {item}")
+                sys.exit(1)
+            if item not in formats:
+                formats.append(item)
+        if not formats:
+            print("Error: No valid output formats requested.")
+            sys.exit(1)
+        return formats
+
+    input_file = config.get('input_file', '')
+    input_ext = os.path.splitext(input_file)[1].lower()
+    if input_ext in allowed:
+        return [input_ext]
+    return ['.epub']
 
 
 # =============================================================================
@@ -754,8 +787,8 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr):
         return None
 
 
-def generate_formats(temp_dir, lang_attr):
-    """Generate DOCX, EPUB, and PDF with result summary"""
+def generate_formats(temp_dir, lang_attr, output_formats):
+    """Generate selected output formats with result summary"""
     print("=== Generating output formats ===")
 
     html_file = os.path.join(temp_dir, "book_doc.html")
@@ -768,7 +801,7 @@ def generate_formats(temp_dir, lang_attr):
             return
 
     results = {}
-    for ext in ['.docx', '.epub', '.pdf']:
+    for ext in output_formats:
         result = generate_format(html_file, temp_dir, ext, lang_attr)
         if result:
             file_size = os.path.getsize(result)
@@ -799,6 +832,7 @@ def main():
     parser.add_argument('--title', default=None, help='Translated book title (override config)')
     parser.add_argument('--author', default=None, help='Author name (override config)')
     parser.add_argument('--lang', default=None, help='Output language code (override config)')
+    parser.add_argument('--formats', default=None, help='Comma-separated output formats, e.g. epub or epub,pdf')
     parser.add_argument('--cleanup', action='store_true', help='Remove intermediate artifacts after successful build')
 
     args = parser.parse_args()
@@ -813,6 +847,7 @@ def main():
 
     lang_code = args.lang or config.get('output_lang', 'zh')
     lang_cfg = get_lang_config(lang_code)
+    output_formats = resolve_output_formats(config, args.formats)
 
     title = args.title or config.get('original_title', 'Translated Book')
     author = args.author or config.get('creator', 'Unknown Author')
@@ -822,6 +857,7 @@ def main():
     print(f"Title: {title}")
     print(f"Author: {author}")
     print(f"Language: {lang_code} (attr: {lang_cfg['lang_attr']})")
+    print(f"Formats: {', '.join(output_formats)}")
 
     # Step 4: Merge
     if not merge_markdown_files(temp_dir):
@@ -835,13 +871,14 @@ def main():
     add_toc(temp_dir)
 
     # Step 7: Generate formats
-    all_formats_ok = generate_formats(temp_dir, lang_cfg['lang_attr'])
+    all_formats_ok = generate_formats(temp_dir, lang_cfg['lang_attr'], output_formats)
 
     print("\n=== Build Complete ===")
     print(f"All outputs saved to: {temp_dir}")
 
     # List generated files
-    for ext in ['book.html', 'book_doc.html', 'book.docx', 'book.epub', 'book.pdf']:
+    final_outputs = ['book.html', 'book_doc.html'] + [f'book{ext}' for ext in output_formats]
+    for ext in final_outputs:
         filepath = os.path.join(temp_dir, ext)
         if os.path.exists(filepath):
             size = os.path.getsize(filepath)

@@ -26,6 +26,7 @@ Determine these values from the user's request:
 
 - `file_path`: source `pdf`, `docx`, or `epub`
 - `target_lang`: default to `zh-TW` when the user asks for Traditional Chinese
+- `output_formats`: ask the user which output format(s) they want; if not specified, default to the original source format
 - `sample_count`: default `3`
 - `parallelism`: default `1`, recommended ceiling `2`, hard ceiling `3`
 - `custom_instructions`: optional translation style constraints
@@ -133,12 +134,24 @@ Read:
 
 Then write the final result to `output_chunk*.md`.
 
-### 7. Merge And Build The Final Ebook
+### 7. Confirm Output Format(s)
+
+Before the final build, ask the user which output format(s) they want.
+
+Rules:
+
+- default to the original source format
+- if the source file is `epub`, default output is `epub`
+- if the source file is `pdf`, default output is `pdf`
+- if the source file is `docx`, default output is `docx`
+- the user may request multiple formats, such as `epub,pdf`
+
+### 8. Merge And Build The Final Ebook
 
 Run:
 
 ```bash
-python3 scripts/merge_and_build.py --temp-dir "<temp_dir>" --title "<translated_title>"
+python3 scripts/merge_and_build.py --temp-dir "<temp_dir>" --title "<translated_title>" --formats "<requested_formats>"
 ```
 
 The final merge/build stage still uses Pandoc and Calibre and produces:
@@ -146,9 +159,7 @@ The final merge/build stage still uses Pandoc and Calibre and produces:
 - `output.md`
 - `book.html`
 - `book_doc.html`
-- `book.docx`
-- `book.epub`
-- `book.pdf`
+- only the requested final book format(s), such as `book.epub` or `book.pdf`
 
 ## Chunk Lifecycle
 
