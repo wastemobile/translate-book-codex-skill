@@ -31,6 +31,11 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 - adds `chunk_audit.py` to classify suspicious chunks and promote safe refined outputs
 - preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_` instead of writing only one translation layer
 
+## Credits
+
+- Original workflow: `deusyu/translate-book`
+- Codex port and implementation: wastemobile with OpenAI Codex
+
 ## Requirements
 
 - `python3`
