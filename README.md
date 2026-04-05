@@ -13,6 +13,24 @@ The conversion and packaging pipeline is inherited from the original `translate-
 - Pandoc converts HTML to Markdown and Markdown back to HTML
 - validated chunks are merged and packaged into `html`, `docx`, `epub`, and `pdf`
 
+## Upstream Reference
+
+This project is based on the original Claude Code skill:
+
+- `deusyu/translate-book`
+- https://github.com/deusyu/translate-book
+
+## What Changed
+
+Compared with the upstream Claude version, this Codex version keeps the same preprocessing and packaging pipeline, but changes the translation orchestration:
+
+- replaces the original high-concurrency subagent workflow with a conservative low-concurrency Codex workflow
+- uses Codex itself only for a few sample chunks and final high-risk review
+- adds a local Ollama draft stage with `aya-expanse:8b`
+- adds a local Ollama refinement stage with `gemma4:26b`
+- adds `chunk_audit.py` to classify suspicious chunks and promote safe refined outputs
+- preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_` instead of writing only one translation layer
+
 ## Requirements
 
 - `python3`
