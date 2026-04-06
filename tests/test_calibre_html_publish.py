@@ -54,10 +54,6 @@ class ConvertHtmlWithCalibreTests(unittest.TestCase):
             self.assertIn("3", cmd)
             self.assertNotIn("--disable-font-rescaling", cmd)
 
-    @unittest.skipUnless(
-        "cover" in inspect.signature(calibre_html_publish.convert_html_with_calibre).parameters,
-        "cover support not merged yet",
-    )
     def test_includes_cover_argument_when_requested(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             input_html = Path(temp_dir) / "input.html"
@@ -96,10 +92,6 @@ class ConvertHtmlWithCalibreTests(unittest.TestCase):
             self.assertIn(str(cover_file), cmd)
 
 class ExtractCoverFromEpubTests(unittest.TestCase):
-    @unittest.skipUnless(
-        hasattr(merge_and_build, "extract_cover_from_epub"),
-        "cover extraction support not merged yet",
-    )
     def test_extracts_cover_from_opf_cover_image_item(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             epub_file = Path(temp_dir) / "source.epub"
@@ -147,10 +139,6 @@ class ExtractCoverFromEpubTests(unittest.TestCase):
             self.assertTrue(Path(extracted).exists())
             self.assertEqual(Path(extracted).read_bytes(), cover_bytes)
 
-    @unittest.skipUnless(
-        hasattr(merge_and_build, "extract_cover_from_epub"),
-        "cover extraction support not merged yet",
-    )
     def test_extracts_cover_via_meta_cover_fallback(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             epub_file = Path(temp_dir) / "source.epub"

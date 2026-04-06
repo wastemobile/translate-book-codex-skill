@@ -13,7 +13,9 @@ import glob
 import shutil
 import subprocess
 import argparse
+import zipfile
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from manifest import validate_for_merge
 
@@ -156,6 +158,71 @@ def resolve_output_formats(config, formats_arg):
     if input_ext in allowed:
         return [input_ext]
     return ['.epub']
+
+
+def extract_cover_from_epub(epub_path, output_dir):
+    """Extract the original cover image from an EPUB if one is declared."""
+    container_ns = {"c": "urn:oasis:names:tc:opendocument:xmlns:container"}
+    opf_ns = {"opf": "http://www.idpf.org/2007/opf"}
+
+    try:
+        with zipfile.ZipFile(epub_path, "r") as zf:
+            try:
+                container_xml = zf.read("META-INF/container.xml")
+            except KeyError:
+                return None
+
+            container_root = ET.fromstring(container_xml)
+            rootfile = container_root.find(".//c:rootfile", container_ns)
+            if rootfile is None:
+                return None
+
+            opf_path = rootfile.attrib.get("full-path")
+            if not opf_path:
+                return None
+
+            opf_root = ET.fromstring(zf.read(opf_path))
+            manifest = opf_root.find("opf:manifest", opf_ns)
+            metadata = opf_root.find("opf:metadata", opf_ns)
+            if manifest is None:
+                return None
+
+            cover_href = None
+
+            for item in manifest.findall("opf:item", opf_ns):
+                properties = item.attrib.get("properties", "")
+                item_id = item.attrib.get("id", "")
+                if "cover-image" in properties.split() or item_id == "cover-image":
+                    cover_href = item.attrib.get("href")
+                    break
+
+            if not cover_href and metadata is not None:
+                for meta in metadata.findall("opf:meta", opf_ns):
+                    if meta.attrib.get("name") == "cover":
+                        cover_id = meta.attrib.get("content")
+                        if not cover_id:
+                            continue
+                        for item in manifest.findall("opf:item", opf_ns):
+                            if item.attrib.get("id") == cover_id:
+                                cover_href = item.attrib.get("href")
+                                break
+                    if cover_href:
+                        break
+
+            if not cover_href:
+                return None
+
+            cover_zip_path = str(Path(opf_path).parent / cover_href)
+            cover_bytes = zf.read(cover_zip_path)
+
+            os.makedirs(output_dir, exist_ok=True)
+            cover_name = os.path.basename(cover_href) or "cover.jpg"
+            output_path = os.path.join(output_dir, cover_name)
+            with open(output_path, "wb") as f:
+                f.write(cover_bytes)
+            return output_path
+    except (OSError, zipfile.BadZipFile, ET.ParseError, KeyError):
+        return None
 
 
 # =============================================================================
@@ -726,7 +793,7 @@ def add_toc(temp_dir):
 # Step 7: Generate DOCX/EPUB/PDF with error transparency
 # =============================================================================
 
-def generate_format(html_file, temp_dir, output_ext, lang_attr):
+def generate_format(html_file, temp_dir, output_ext, lang_attr, cover=None):
     """Generate a specific format using calibre_html_publish.py"""
     output_file = os.path.join(temp_dir, f"book{output_ext}")
 
@@ -746,7 +813,11 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr):
                     images_newer = True
                     break
 
-        if not html_newer and not images_newer:
+        cover_newer = False
+        if cover and os.path.isfile(cover):
+            cover_newer = os.path.getmtime(cover) > output_mtime
+
+        if not html_newer and not images_newer and not cover_newer:
             file_size = os.path.getsize(output_file)
             print(f"Skipping {output_ext} - already exists and up to date ({file_size:,} bytes)")
             return output_file
@@ -756,6 +827,8 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr):
                 reasons.append("source HTML changed")
             if images_newer:
                 reasons.append("image assets changed")
+            if cover_newer:
+                reasons.append("cover image changed")
             print(f"Rebuilding {output_ext} - {', '.join(reasons)}")
 
     publish_script = os.path.join(SCRIPT_DIR, "calibre_html_publish.py")
@@ -765,6 +838,8 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr):
 
     try:
         cmd = ["python3", publish_script, html_file, "-o", output_file, "--lang", lang_attr]
+        if cover and output_ext == ".epub":
+            cmd.extend(["--cover", cover])
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
 
         if os.path.exists(output_file):
@@ -787,7 +862,7 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr):
         return None
 
 
-def generate_formats(temp_dir, lang_attr, output_formats):
+def generate_formats(temp_dir, lang_attr, output_formats, cover=None):
     """Generate selected output formats with result summary"""
     print("=== Generating output formats ===")
 
@@ -802,7 +877,7 @@ def generate_formats(temp_dir, lang_attr, output_formats):
 
     results = {}
     for ext in output_formats:
-        result = generate_format(html_file, temp_dir, ext, lang_attr)
+        result = generate_format(html_file, temp_dir, ext, lang_attr, cover=cover)
         if result:
             file_size = os.path.getsize(result)
             results[ext] = ('OK', f"{file_size:,} bytes")
@@ -833,6 +908,7 @@ def main():
     parser.add_argument('--author', default=None, help='Author name (override config)')
     parser.add_argument('--lang', default=None, help='Output language code (override config)')
     parser.add_argument('--formats', default=None, help='Comma-separated output formats, e.g. epub or epub,pdf')
+    parser.add_argument('--cover', default=None, help='Explicit cover image path for EPUB output')
     parser.add_argument('--cleanup', action='store_true', help='Remove intermediate artifacts after successful build')
 
     args = parser.parse_args()
@@ -851,6 +927,17 @@ def main():
 
     title = args.title or config.get('original_title', 'Translated Book')
     author = args.author or config.get('creator', 'Unknown Author')
+    cover = args.cover
+    if cover and not os.path.exists(cover):
+        print(f"Error: Cover file not found: {cover}")
+        sys.exit(1)
+
+    if cover is None:
+        input_file = config.get('input_file', '')
+        if input_file.lower().endswith('.epub'):
+            cover = extract_cover_from_epub(
+                input_file, os.path.join(temp_dir, "cover_extract")
+            )
 
     print(f"=== Merge and Build ===")
     print(f"Temp directory: {temp_dir}")
@@ -858,6 +945,8 @@ def main():
     print(f"Author: {author}")
     print(f"Language: {lang_code} (attr: {lang_cfg['lang_attr']})")
     print(f"Formats: {', '.join(output_formats)}")
+    if cover:
+        print(f"Cover: {cover}")
 
     # Step 4: Merge
     if not merge_markdown_files(temp_dir):
@@ -871,7 +960,9 @@ def main():
     add_toc(temp_dir)
 
     # Step 7: Generate formats
-    all_formats_ok = generate_formats(temp_dir, lang_cfg['lang_attr'], output_formats)
+    all_formats_ok = generate_formats(
+        temp_dir, lang_cfg['lang_attr'], output_formats, cover=cover
+    )
 
     print("\n=== Build Complete ===")
     print(f"All outputs saved to: {temp_dir}")
@@ -910,6 +1001,11 @@ def cleanup_intermediate_files(temp_dir):
         if os.path.exists(filepath):
             os.remove(filepath)
             removed.append(name)
+
+    cover_extract_dir = os.path.join(temp_dir, "cover_extract")
+    if os.path.isdir(cover_extract_dir):
+        shutil.rmtree(cover_extract_dir)
+        removed.append("cover_extract/")
 
     if removed:
         print(f"Removed {len(removed)} intermediate file(s):")

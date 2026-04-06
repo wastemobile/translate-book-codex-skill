@@ -1,6 +1,6 @@
 ---
 name: translate-book
-description: Translate long-form books and ebooks (PDF, DOCX, EPUB) through a four-stage Codex plus local Ollama workflow. Use when converting a book into Markdown chunks, generating baseline sample translations with Codex, running local `aya-expanse:8b` drafts, running local `gemma4:26b` refinement, auditing high-risk chunks, and packaging final translated output back into HTML, DOCX, EPUB, and PDF with Pandoc and Calibre.
+description: Translate long-form books and ebooks (PDF, DOCX, EPUB) through a four-stage Codex plus local model workflow. Use when converting a book into Markdown chunks, generating baseline sample translations with Codex, running local `aya-expanse-8b-4bit-mlx` drafts, running local `gemma-4-26b-a4b-it-mxfp4` refinement, auditing high-risk chunks, and packaging final translated output back into HTML, DOCX, EPUB, and PDF with Pandoc and Calibre.
 ---
 
 # Translate Book
@@ -16,9 +16,12 @@ Use this skill to translate an entire book with a conservative, resumable pipeli
   - `pypandoc`
   - `beautifulsoup4` (recommended)
   - `markdown` (recommended)
-- Local Ollama runtime for:
-  - `aya-expanse:8b`
-  - `gemma4:26b`
+- Local model runtime:
+  - default: `oMLX` at `http://127.0.0.1:8000/v1`
+  - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
+- Recommended local models:
+  - `aya-expanse-8b-4bit-mlx`
+  - `gemma-4-26b-a4b-it-mxfp4`
 
 ## Collect Parameters
 
@@ -80,7 +83,8 @@ This stage:
 
 - reads `chunk*.md`
 - skips chunks that already have `draft_chunk*.md`
-- uses `aya-expanse:8b`
+- defaults to provider `omlx`
+- uses model `aya-expanse-8b-4bit-mlx`
 - writes `draft_chunk*.md`
 - retries each failed chunk once
 
@@ -96,9 +100,33 @@ This stage:
 
 - reads `chunk*.md` plus `draft_chunk*.md`
 - skips chunks that already have `refined_chunk*.md`
-- uses `gemma4:26b`
+- defaults to provider `omlx`
+- uses model `gemma-4-26b-a4b-it-mxfp4`
 - writes `refined_chunk*.md`
 - retries each failed chunk once
+
+Provider overrides:
+
+```bash
+python3 scripts/ollama_stage_translate.py \
+  --temp-dir "<temp_dir>" \
+  --provider ollama \
+  --api-base "http://127.0.0.1:11434/api/generate" \
+  --model "aya-expanse:8b"
+```
+
+The local model stages accept:
+
+- `--provider`
+- `--api-base`
+- `--api-key`
+- `--model`
+
+Environment variable fallbacks:
+
+- `LOCAL_LLM_PROVIDER`
+- `LOCAL_LLM_API_BASE`
+- `LOCAL_LLM_API_KEY`
 
 ### 5. Audit Refined Chunks
 
@@ -160,6 +188,8 @@ The final merge/build stage still uses Pandoc and Calibre and produces:
 - `book.html`
 - `book_doc.html`
 - only the requested final book format(s), such as `book.epub` or `book.pdf`
+
+If the original source is an `epub`, preserve its original cover image when building the translated `epub`.
 
 ## Chunk Lifecycle
 

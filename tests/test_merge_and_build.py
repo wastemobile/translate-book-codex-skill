@@ -94,10 +94,6 @@ class GenerateFormatTests(unittest.TestCase):
             self.assertEqual(cmd[2], html_file)
             self.assertEqual(cmd[4], output_file)
 
-    @unittest.skipUnless(
-        "cover" in inspect.signature(merge_and_build.generate_format).parameters,
-        "cover support not merged yet",
-    )
     def test_rebuilds_epub_when_cover_is_explicitly_requested(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             html_file = os.path.join(temp_dir, "book_doc.html")
@@ -133,10 +129,6 @@ class CleanupIntermediateFilesTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
-    @unittest.skipUnless(
-        hasattr(merge_and_build, "extract_cover_from_epub"),
-        "cover extraction support not merged yet",
-    )
     def test_cleanup_removes_cover_extract_directory_when_present(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -155,10 +147,6 @@ class CleanupIntermediateFilesTests(unittest.TestCase):
 
 
 class MissingCoverPathTests(unittest.TestCase):
-    @unittest.skipUnless(
-        "cover" in inspect.signature(merge_and_build.generate_format).parameters,
-        "cover support not merged yet",
-    )
     def test_main_rejects_missing_cover_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             missing_cover = os.path.join(temp_dir, "missing-cover.jpg")
@@ -183,6 +171,34 @@ class MissingCoverPathTests(unittest.TestCase):
 
             self.assertNotEqual(exc.exception.code, 0)
             generate_formats_mock.assert_not_called()
+
+
+class AutoCoverSelectionTests(unittest.TestCase):
+    def test_main_extracts_cover_from_source_epub_and_passes_it_to_generator(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_epub = os.path.join(temp_dir, "source.epub")
+
+            with mock.patch.object(
+                merge_and_build, "load_config", return_value={"input_file": source_epub}
+            ), mock.patch.object(
+                merge_and_build, "get_lang_config", return_value={"lang_attr": "zh-CN"}
+            ), mock.patch.object(
+                merge_and_build, "merge_markdown_files", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "convert_md_to_html", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "add_toc", return_value=True
+            ), mock.patch.object(
+                merge_and_build, "extract_cover_from_epub", return_value=os.path.join(temp_dir, "cover.jpg")
+            ) as extract_cover_mock, mock.patch.object(
+                merge_and_build, "generate_formats", return_value=True
+            ) as generate_formats_mock, mock.patch.object(
+                sys, "argv", ["merge_and_build.py", "--temp-dir", temp_dir]
+            ):
+                merge_and_build.main()
+
+            extract_cover_mock.assert_called_once()
+            self.assertEqual(generate_formats_mock.call_args.kwargs["cover"], os.path.join(temp_dir, "cover.jpg"))
 
 
 class MainFormatSelectionTests(unittest.TestCase):

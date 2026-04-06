@@ -31,6 +31,24 @@ class DiscoverPendingRefinementsTests(unittest.TestCase):
 
 
 class RefinePipelineTests(unittest.TestCase):
+    def test_generate_refinement_uses_omlx_defaults(self):
+        with mock.patch.object(
+            ollama_stage_refine,
+            "generate_text",
+            return_value="你好，世界",
+        ) as refine_mock:
+            result = ollama_stage_refine.generate_refinement("Hello world", "你好 世界")
+
+        self.assertEqual(result, "你好，世界")
+        refine_mock.assert_called_once_with(
+            mock.ANY,
+            model="gemma-4-26b-a4b-it-mxfp4",
+            provider="omlx",
+            api_base="http://127.0.0.1:8000/v1",
+            api_key=None,
+            temperature=0.1,
+        )
+
     def test_process_temp_dir_writes_refined_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

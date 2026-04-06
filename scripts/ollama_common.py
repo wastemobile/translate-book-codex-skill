@@ -1,37 +1,22 @@
 #!/usr/bin/env python3
-"""Shared helpers for local Ollama translation stages."""
+"""Backward-compatible wrappers for legacy Ollama helper imports."""
 
-import json
-from pathlib import Path
-from urllib import request
+from local_model_client import DEFAULT_OLLAMA_API_BASE, read_text, write_text
 
 
-DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-
-
-def read_text(path):
-    return Path(path).read_text(encoding="utf-8")
-
-
-def write_text(path, content):
-    Path(path).write_text(content, encoding="utf-8")
+DEFAULT_OLLAMA_URL = DEFAULT_OLLAMA_API_BASE
 
 
 def post_generate(prompt, model, ollama_url=DEFAULT_OLLAMA_URL, options=None):
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-    }
+    temperature = None
     if options:
-        payload["options"] = options
+        temperature = options.get("temperature")
+    from local_model_client import generate_text
 
-    req = request.Request(
-        ollama_url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    return generate_text(
+        prompt,
+        model=model,
+        provider="ollama",
+        api_base=ollama_url,
+        temperature=temperature,
     )
-    with request.urlopen(req, timeout=600) as response:
-        body = json.loads(response.read().decode("utf-8"))
-    return body["response"]

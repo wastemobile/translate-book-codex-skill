@@ -27,6 +27,24 @@ class DiscoverPendingChunksTests(unittest.TestCase):
 
 
 class DraftTranslationPipelineTests(unittest.TestCase):
+    def test_generate_translation_uses_omlx_defaults(self):
+        with mock.patch.object(
+            ollama_stage_translate,
+            "generate_text",
+            return_value="# 你好\n\n世界",
+        ) as generate_mock:
+            result = ollama_stage_translate.generate_translation("# Hello\n\nWorld")
+
+        self.assertEqual(result, "# 你好\n\n世界")
+        generate_mock.assert_called_once_with(
+            mock.ANY,
+            model="aya-expanse-8b-4bit-mlx",
+            provider="omlx",
+            api_base="http://127.0.0.1:8000/v1",
+            api_key=None,
+            temperature=0.2,
+        )
+
     def test_process_temp_dir_writes_draft_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
