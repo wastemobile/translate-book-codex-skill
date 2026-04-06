@@ -87,6 +87,33 @@ Local stage overrides:
 - use `--api-base` and `--api-key` to point at a different local endpoint
 - environment variables `LOCAL_LLM_PROVIDER`, `LOCAL_LLM_API_BASE`, and `LOCAL_LLM_API_KEY` are supported
 
+## Recommended Invocation
+
+When working in a directory that contains a source book, explicitly name the skill instead of relying on automatic intent detection.
+
+Recommended prompt shape:
+
+```text
+請用 translate-book 技能把 ./book.epub 翻成繁體中文，輸出 epub 和 pdf
+```
+
+Include these details whenever possible:
+
+- source file path
+- target language
+- output format or formats
+- any style instructions
+
+More examples:
+
+```text
+用 translate-book 技能翻譯目前目錄下的 novel.epub，目標語言 zh-TW，只輸出 epub
+```
+
+```text
+請用 translate-book skill 處理 ./source/book.pdf，翻成繁體中文，保留原書風格，輸出 pdf
+```
+
 ## Output Formats
 
 - The build step no longer assumes all of `docx`, `epub`, and `pdf`.
