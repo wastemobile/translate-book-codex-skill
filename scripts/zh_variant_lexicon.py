@@ -219,9 +219,20 @@ def _refine_single_character_change(original_text, candidate_text, opcodes, inde
     }
 
 
+def _build_broad_low_confidence_change(original_text, candidate_text):
+    return {
+        "source_text": original_text,
+        "replacement_text": candidate_text,
+        "confidence": "low",
+        "start": 0,
+        "end": len(original_text),
+    }
+
+
 def extract_variant_changes(original_text, candidate_text):
     matcher = difflib.SequenceMatcher(None, original_text, candidate_text)
     changes = []
+    needs_broad_low_change = False
     opcodes = matcher.get_opcodes()
     for index, (tag, i1, i2, j1, j2) in enumerate(opcodes):
         if tag == "equal":
@@ -240,26 +251,33 @@ def extract_variant_changes(original_text, candidate_text):
             continue
         source_text = refined_change["source_text"]
         replacement_text = refined_change["replacement_text"]
+        confidence = classify_variant_change(
+            source_text,
+            replacement_text,
+            original_text=original_text,
+            candidate_text=candidate_text,
+            start=refined_change["start"],
+            end=refined_change["end"],
+            candidate_start=refined_change["candidate_start"],
+            candidate_end=refined_change["candidate_end"],
+            boundary_strength=refined_change["boundary_strength"],
+            clean_local=refined_change["clean_local"],
+        )
+        if confidence == "high":
+            changes.append(
+                {
+                    "source_text": source_text,
+                    "replacement_text": replacement_text,
+                    "confidence": confidence,
+                    "start": refined_change["start"],
+                    "end": refined_change["end"],
+                }
+            )
+        elif source_text != replacement_text:
+            needs_broad_low_change = True
 
-        change = {
-            "source_text": source_text,
-            "replacement_text": replacement_text,
-            "confidence": classify_variant_change(
-                source_text,
-                replacement_text,
-                original_text=original_text,
-                candidate_text=candidate_text,
-                start=refined_change["start"],
-                end=refined_change["end"],
-                candidate_start=refined_change["candidate_start"],
-                candidate_end=refined_change["candidate_end"],
-                boundary_strength=refined_change["boundary_strength"],
-                clean_local=refined_change["clean_local"],
-            ),
-            "start": refined_change["start"],
-            "end": refined_change["end"],
-        }
-        changes.append(change)
+    if needs_broad_low_change and original_text != candidate_text:
+        changes.append(_build_broad_low_confidence_change(original_text, candidate_text))
     return changes
 
 
