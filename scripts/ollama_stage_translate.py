@@ -13,7 +13,7 @@ from local_model_client import (
     read_text,
     write_text,
 )
-from naer_terms import find_glossary_hits, render_glossary_block
+from naer_terms import auto_select_datasets, find_glossary_hits, render_glossary_block
 
 
 DEFAULT_MODEL = "aya-expanse-8b-4bit-mlx"
@@ -58,11 +58,22 @@ def generate_translation(
     glossary_db=None,
     glossary_dataset=None,
     glossary_domain=None,
+    glossary_auto_select=False,
+    glossary_auto_max_datasets=2,
 ):
+    glossary_dataset_filter = glossary_dataset
+    if glossary_db and glossary_auto_select and not glossary_dataset:
+        glossary_dataset_filter = auto_select_datasets(
+            glossary_db,
+            source_text,
+            dataset_candidates=None,
+            domain=glossary_domain,
+            max_datasets=glossary_auto_max_datasets,
+        )
     glossary_block = build_glossary_block(
         glossary_db,
         source_text,
-        dataset=glossary_dataset,
+        dataset=glossary_dataset_filter,
         domain=glossary_domain,
     )
     prompt = build_prompt(source_text, target_lang, glossary_block=glossary_block)
@@ -87,6 +98,8 @@ def translate_one(
     glossary_db=None,
     glossary_dataset=None,
     glossary_domain=None,
+    glossary_auto_select=False,
+    glossary_auto_max_datasets=2,
 ):
     source_text = read_text(item["source"])
     last_error = None
@@ -102,6 +115,8 @@ def translate_one(
                 glossary_db=glossary_db,
                 glossary_dataset=glossary_dataset,
                 glossary_domain=glossary_domain,
+                glossary_auto_select=glossary_auto_select,
+                glossary_auto_max_datasets=glossary_auto_max_datasets,
             ).strip()
             if not translated:
                 raise ValueError("empty translation")
@@ -128,6 +143,8 @@ def process_temp_dir(
     glossary_db=None,
     glossary_dataset=None,
     glossary_domain=None,
+    glossary_auto_select=False,
+    glossary_auto_max_datasets=2,
 ):
     pending = discover_pending_chunks(temp_dir)
     report = {"pending": len(pending), "completed": 0, "failed": 0, "failures": []}
@@ -148,6 +165,8 @@ def process_temp_dir(
                 glossary_db=glossary_db,
                 glossary_dataset=glossary_dataset,
                 glossary_domain=glossary_domain,
+                glossary_auto_select=glossary_auto_select,
+                glossary_auto_max_datasets=glossary_auto_max_datasets,
             )
             if ok:
                 report["completed"] += 1
@@ -170,6 +189,8 @@ def process_temp_dir(
                 glossary_db,
                 glossary_dataset,
                 glossary_domain,
+                glossary_auto_select,
+                glossary_auto_max_datasets,
             ): item
             for item in pending
         }
@@ -197,6 +218,8 @@ def main():
     parser.add_argument("--glossary-db")
     parser.add_argument("--glossary-dataset")
     parser.add_argument("--glossary-domain")
+    parser.add_argument("--glossary-auto-select", action="store_true")
+    parser.add_argument("--glossary-auto-max-datasets", type=int, default=2)
     args = parser.parse_args()
 
     report = process_temp_dir(
@@ -211,6 +234,8 @@ def main():
         glossary_db=args.glossary_db,
         glossary_dataset=args.glossary_dataset,
         glossary_domain=args.glossary_domain,
+        glossary_auto_select=args.glossary_auto_select,
+        glossary_auto_max_datasets=args.glossary_auto_max_datasets,
     )
     print(report)
 

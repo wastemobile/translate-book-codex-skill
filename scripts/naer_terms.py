@@ -20,6 +20,36 @@ NS = {
 HEADER_SOURCE_KEYS = ("英文", "英文名稱", "英語", "term", "english")
 HEADER_TARGET_KEYS = ("中文", "中文名稱", "譯名", "chinese")
 HEADER_NOTE_KEYS = ("備註", "註", "note", "remarks")
+LOWERCASE_STOPWORD_TERMS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "by",
+    "for",
+    "in",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+}
+
+
+def _normalize_filter_values(value):
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    values = []
+    for item in value:
+        if item is None:
+            continue
+        text = str(item).strip()
+        if text:
+            values.append(text)
+    return values
 
 
 def normalize_term(text):
@@ -198,20 +228,31 @@ def import_ods_to_sqlite(
             )
 
 
+def _build_filter_clause(column, values):
+    if not values:
+        return "", []
+    placeholders = ", ".join(["?"] * len(values))
+    return f"{column} IN ({placeholders})", list(values)
+
+
 def _fetch_terms(conn, dataset=None, domain=None):
     query = "SELECT source_term, target_term, normalized_source, note, dataset, domain, priority FROM terms"
     clauses = []
     params = []
-    if dataset:
-        clauses.append("dataset = ?")
-        params.append(dataset)
-    if domain:
-        clauses.append("domain = ?")
-        params.append(domain)
+    dataset_values = _normalize_filter_values(dataset)
+    domain_values = _normalize_filter_values(domain)
+    if dataset_values:
+        clause, clause_params = _build_filter_clause("dataset", dataset_values)
+        clauses.append(clause)
+        params.extend(clause_params)
+    if domain_values:
+        clause, clause_params = _build_filter_clause("domain", domain_values)
+        clauses.append(clause)
+        params.extend(clause_params)
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
     query += " ORDER BY LENGTH(normalized_source) DESC, priority ASC, source_term ASC"
-    return [
+    terms = [
         {
             "source_term": row[0],
             "target_term": row[1],
@@ -223,12 +264,63 @@ def _fetch_terms(conn, dataset=None, domain=None):
         }
         for row in conn.execute(query, params)
     ]
+    dataset_order = {name: index for index, name in enumerate(dataset_values)}
+    domain_order = {name: index for index, name in enumerate(domain_values)}
+    terms.sort(
+        key=lambda item: (
+            dataset_order.get(item["dataset"], len(dataset_order)),
+            domain_order.get(item["domain"], len(domain_order)),
+            -len(item["normalized_source"]),
+            item["priority"],
+            item["source_term"],
+        )
+    )
+    return terms
+
+
+def auto_select_datasets(db_path, source_text, dataset_candidates=None, domain=None, max_datasets=2):
+    dataset_values = _normalize_filter_values(dataset_candidates)
+    if not dataset_values:
+        with sqlite3.connect(db_path) as conn:
+            dataset_values = [row[0] for row in conn.execute("SELECT DISTINCT dataset FROM terms ORDER BY dataset")]
+
+    scored = []
+    for index, dataset_name in enumerate(dataset_values):
+        hits = find_glossary_hits(
+            db_path,
+            source_text,
+            dataset=dataset_name,
+            domain=domain,
+            limit=100,
+        )
+        if not hits:
+            continue
+        scored.append(
+            {
+                "dataset": dataset_name,
+                "hit_count": len(hits),
+                "coverage": sum(len(item["normalized_source"]) for item in hits),
+                "input_order": index,
+            }
+        )
+
+    scored.sort(
+        key=lambda item: (
+            -item["hit_count"],
+            item["input_order"],
+            -item["coverage"],
+        )
+    )
+    return [item["dataset"] for item in scored[: max(1, int(max_datasets))]]
 
 
 def _term_matches_source(source_text, normalized_text, term):
     raw_term = term["source_term"].strip()
     normalized_source = term["normalized_source"]
     if not normalized_source or len(normalized_source) < 2:
+        return False
+
+    if raw_term.islower() and normalized_source in LOWERCASE_STOPWORD_TERMS:
         return False
 
     if raw_term.isupper() and len(raw_term) <= 5:

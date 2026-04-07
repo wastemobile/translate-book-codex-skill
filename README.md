@@ -112,6 +112,8 @@ The prototype uses a `reference + QA` policy:
 
 - glossary hits are injected as translation references, not hard replacements
 - post-translation checks flag `term_mismatch` cases where expected terminology was not used
+- multiple datasets are supported through comma-separated dataset and domain filters, with left-to-right priority
+- when `--glossary-auto-select` is enabled and no dataset is specified, the pipeline picks the top matching datasets for each chunk
 
 Translation-stage integration:
 
@@ -133,6 +135,17 @@ python3 scripts/chunk_audit.py \
   --glossary-db ./test-output/naer/terms.sqlite3 \
   --glossary-dataset "電子計算機名詞" \
   --glossary-domain "computer-science"
+```
+
+Multi-dataset example:
+
+```bash
+python3 scripts/ollama_stage_translate.py \
+  --temp-dir ./book_temp \
+  --glossary-db ./test-output/naer-multi/terms.sqlite3 \
+  --glossary-auto-select \
+  --glossary-auto-max-datasets 2 \
+  --glossary-domain "computer-science,electrical-engineering"
 ```
 
 ## Quick Flow

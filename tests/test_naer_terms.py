@@ -182,6 +182,158 @@ class ImportAndQueryTests(unittest.TestCase):
 
             self.assertEqual(hits, [])
 
+    def test_query_supports_multiple_datasets_with_preferred_order(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "terms.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                naer_terms._ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("bus", "匯流排", "bus", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "bus-cs"),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("bus", "母線", "bus", "electrical-engineering", "電機工程名詞", "", "en", "zh-TW", 100, "b.ods", "bus-ee"),
+                )
+
+            hits = naer_terms.find_glossary_hits(
+                db_path,
+                "The bus is overloaded.",
+                dataset=["電機工程名詞", "電子計算機名詞"],
+            )
+
+            self.assertEqual(len(hits), 1)
+            self.assertEqual(hits[0]["dataset"], "電機工程名詞")
+            self.assertEqual(hits[0]["target_term"], "母線")
+
+    def test_query_accepts_comma_separated_dataset_filter(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "terms.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                naer_terms._ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("compiler", "編譯器", "compiler", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "compiler-cs"),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("relay", "繼電器", "relay", "electrical-engineering", "電機工程名詞", "", "en", "zh-TW", 100, "b.ods", "relay-ee"),
+                )
+
+            hits = naer_terms.find_glossary_hits(
+                db_path,
+                "A compiler drives a relay.",
+                dataset="電子計算機名詞,電機工程名詞",
+            )
+
+            self.assertEqual(
+                [item["source_term"] for item in hits],
+                ["compiler", "relay"],
+            )
+
+    def test_query_ignores_common_lowercase_stopword_terms(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "terms.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                naer_terms._ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("and", "及", "and", "electrical-engineering", "電機工程名詞", "", "en", "zh-TW", 100, "b.ods", "and-ee"),
+                )
+
+            hits = naer_terms.find_glossary_hits(
+                db_path,
+                "architecture and arithmetic",
+                dataset="電機工程名詞",
+            )
+
+            self.assertEqual(hits, [])
+
+    def test_auto_select_datasets_prefers_more_matches(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "terms.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                naer_terms._ensure_schema(conn)
+                conn.executemany(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        ("compiler", "編譯器", "compiler", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "compiler-cs"),
+                        ("architecture", "架構", "architecture", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "architecture-cs"),
+                        ("relay", "繼電器", "relay", "electrical-engineering", "電機工程名詞", "", "en", "zh-TW", 100, "b.ods", "relay-ee"),
+                    ],
+                )
+
+            selected = naer_terms.auto_select_datasets(
+                db_path,
+                "The compiler architecture does not use a relay.",
+                dataset_candidates=["電機工程名詞", "電子計算機名詞"],
+                max_datasets=2,
+            )
+
+            self.assertEqual(selected, ["電子計算機名詞", "電機工程名詞"])
+
+    def test_auto_select_datasets_can_limit_results(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "terms.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                naer_terms._ensure_schema(conn)
+                conn.executemany(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        ("bus", "匯流排", "bus", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "bus-cs"),
+                        ("relay", "繼電器", "relay", "electrical-engineering", "電機工程名詞", "", "en", "zh-TW", 100, "b.ods", "relay-ee"),
+                    ],
+                )
+
+            selected = naer_terms.auto_select_datasets(
+                db_path,
+                "The bus connects to a relay.",
+                dataset_candidates="電子計算機名詞,電機工程名詞",
+                max_datasets=1,
+            )
+
+            self.assertEqual(selected, ["電子計算機名詞"])
+
 
 if __name__ == "__main__":
     unittest.main()

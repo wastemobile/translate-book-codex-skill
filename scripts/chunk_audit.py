@@ -8,7 +8,7 @@ import re
 import shutil
 
 from local_model_client import read_text
-from naer_terms import check_term_mismatches
+from naer_terms import auto_select_datasets, check_term_mismatches
 
 
 ENGLISH_WORD_RE = re.compile(r"\b[A-Za-z]{4,}\b")
@@ -31,6 +31,8 @@ def audit_chunk(
     glossary_db=None,
     glossary_dataset=None,
     glossary_domain=None,
+    glossary_auto_select=False,
+    glossary_auto_max_datasets=2,
 ):
     source_text = read_text(source_path)
     translated_text = read_text(translated_path)
@@ -52,11 +54,20 @@ def audit_chunk(
         reasons.append("markdown_mismatch")
 
     if glossary_db:
+        glossary_dataset_filter = glossary_dataset
+        if glossary_auto_select and not glossary_dataset:
+            glossary_dataset_filter = auto_select_datasets(
+                glossary_db,
+                source_text,
+                dataset_candidates=None,
+                domain=glossary_domain,
+                max_datasets=glossary_auto_max_datasets,
+            )
         mismatch_report = check_term_mismatches(
             glossary_db,
             source_text=source_text,
             translated_text=translated_text,
-            dataset=glossary_dataset,
+            dataset=glossary_dataset_filter,
             domain=glossary_domain,
         )
         if mismatch_report["mismatches"]:
@@ -71,6 +82,8 @@ def audit_temp_dir(
     glossary_db=None,
     glossary_dataset=None,
     glossary_domain=None,
+    glossary_auto_select=False,
+    glossary_auto_max_datasets=2,
 ):
     report = {"checked": 0, "passed": 0, "failed": 0, "promoted": 0, "issues": []}
     for refined in sorted(glob.glob(os.path.join(temp_dir, "refined_chunk*.md"))):
@@ -88,6 +101,8 @@ def audit_temp_dir(
             glossary_db=glossary_db,
             glossary_dataset=glossary_dataset,
             glossary_domain=glossary_domain,
+            glossary_auto_select=glossary_auto_select,
+            glossary_auto_max_datasets=glossary_auto_max_datasets,
         )
         report["checked"] += 1
         if result["ok"]:
@@ -108,6 +123,8 @@ def main():
     parser.add_argument("--glossary-db")
     parser.add_argument("--glossary-dataset")
     parser.add_argument("--glossary-domain")
+    parser.add_argument("--glossary-auto-select", action="store_true")
+    parser.add_argument("--glossary-auto-max-datasets", type=int, default=2)
     args = parser.parse_args()
     print(
         audit_temp_dir(
@@ -116,6 +133,8 @@ def main():
             glossary_db=args.glossary_db,
             glossary_dataset=args.glossary_dataset,
             glossary_domain=args.glossary_domain,
+            glossary_auto_select=args.glossary_auto_select,
+            glossary_auto_max_datasets=args.glossary_auto_max_datasets,
         )
     )
 

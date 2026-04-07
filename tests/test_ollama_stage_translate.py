@@ -84,6 +84,40 @@ class DraftTranslationPipelineTests(unittest.TestCase):
             generate_mock.call_args.args[0],
         )
 
+    def test_generate_translation_auto_selects_datasets_when_enabled(self):
+        with mock.patch.object(
+            ollama_stage_translate,
+            "auto_select_datasets",
+            return_value=["電子計算機名詞", "電機工程名詞"],
+        ) as auto_select_mock, mock.patch.object(
+            ollama_stage_translate,
+            "build_glossary_block",
+            return_value="Terminology references for this chunk:\n- compiler -> 編譯器",
+        ) as glossary_mock, mock.patch.object(
+            ollama_stage_translate,
+            "generate_text",
+            return_value="編譯器",
+        ):
+            ollama_stage_translate.generate_translation(
+                "A compiler is here.",
+                glossary_db="terms.sqlite3",
+                glossary_auto_select=True,
+            )
+
+        auto_select_mock.assert_called_once_with(
+            "terms.sqlite3",
+            "A compiler is here.",
+            dataset_candidates=None,
+            domain=None,
+            max_datasets=2,
+        )
+        glossary_mock.assert_called_once_with(
+            "terms.sqlite3",
+            "A compiler is here.",
+            dataset=["電子計算機名詞", "電機工程名詞"],
+            domain=None,
+        )
+
     def test_process_temp_dir_writes_draft_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
