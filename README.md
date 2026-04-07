@@ -1,6 +1,6 @@
 # translate-book-codex-skill
 
-Version: `0.2.0`
+Version: `0.3.0`
 
 Codex skill for translating whole books through a four-stage workflow:
 
@@ -8,6 +8,49 @@ Codex skill for translating whole books through a four-stage workflow:
 2. Local `aya-expanse-8b-4bit-mlx` generates fast draft translations.
 3. Local `gemma-4-26b-a4b-it-mxfp4` refines each chunk.
 4. Codex reviews only high-risk chunks before final packaging.
+
+## Architecture Overview
+
+The current pipeline is best understood as:
+
+`convert -> sample -> draft -> refine -> audit -> merge/build`
+
+With translation-specific stages grouped as:
+
+`sample -> draft -> refine -> audit`
+
+Stage responsibilities:
+
+- `sample`: Codex translates a few representative chunks first, so the project has an initial style, tone, and terminology anchor.
+- `draft`: a fast local model produces first-pass translations chunk by chunk.
+- `refine`: a stronger local model rewrites each draft into a cleaner and more consistent translation.
+- `audit`: rule-based and reference-based checks decide which refined chunks are safe to promote, and which ones still need manual or Codex review.
+
+Current reference and normalization hooks:
+
+- `sample`:
+  - style and terminology anchoring is currently done manually through the selected sample chunks
+  - glossary references are not yet automatically injected at this stage
+- `draft`:
+  - NAER-backed glossary lookup can inject chunk-level terminology references into the prompt
+  - this is the main place where technical term standardization currently starts to take effect
+- `refine`:
+  - the same glossary lookup can be injected again, so terminology consistency is reinforced during rewriting
+  - experimental glossary repair logic can attempt targeted terminology correction, but it should still be treated as non-final
+- `audit`:
+  - glossary mismatch checking can flag places where expected standard terms were not used
+  - OpenCC-backed regional lexicon normalization can auto-fix high-confidence `zh-CN` wording into `zh-TW` wording and report lower-confidence findings
+
+Current interpretation of standards support:
+
+- terminology standards:
+  - supported now through the NAER glossary pipeline
+- personal-name and place-name standards:
+  - these can already be imported into the same glossary database if they exist as NAER term packages
+  - however, they are not yet handled with dedicated ranking, ambiguity rules, or audit policies distinct from domain terminology
+- regional wording normalization:
+  - supported now only at `audit`
+  - intentionally kept separate from whole-text simplified/traditional conversion
 
 The conversion and packaging pipeline is inherited from the original `translate-book` workflow:
 
@@ -34,7 +77,7 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 - adds `chunk_audit.py` to classify suspicious chunks and promote safe refined outputs
 - preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_` instead of writing only one translation layer
 
-## Version 0.2.0
+## Version 0.3.0
 
 - default local model backend is now `oMLX`, with `Ollama` retained as a fallback provider
 - Stage 2 and Stage 3 accept provider-aware local API configuration through CLI flags or environment variables
@@ -121,6 +164,13 @@ Current recommendation:
 - glossary mismatch audit is usable
 - glossary repair should still be treated as experimental until more real-book validation is completed
 
+Practical scope of glossary v1:
+
+- technical terminology is the primary supported use case today
+- scholar-name and place-name datasets can already be bulk-imported into the same SQLite glossary store
+- name/place datasets should currently be treated as imported reference material, not as a fully tuned name-normalization system
+- domain prioritization, ambiguity handling, and separate audit policies for names and places are still future work
+
 ## Regional Lexicon Audit
 
 This repository also includes an audit-stage regional lexicon normalization pass for `zh-CN` style wording in translated Chinese output.
@@ -156,6 +206,27 @@ Dependency note:
 
 If OpenCC is not installed, the regional lexicon pass degrades gracefully and leaves the chunk unchanged while still returning a structured audit report.
 That report includes a `regional_opencc_available` signal in the chunk-level and temp-dir summaries so you can see whether the backend was available when the report was generated.
+
+## Current vs Pending
+
+Implemented now:
+
+- `sample -> draft -> refine -> audit` translation pipeline
+- NAER `.ods/.zip -> SQLite` glossary import
+- multi-dataset glossary lookup and auto-select
+- glossary injection in `draft` and `refine`
+- glossary mismatch detection in `audit`
+- OpenCC-backed `zh-CN` to `zh-TW` regional wording normalization in `audit`
+- high-confidence regional auto-fix plus low-confidence reporting
+
+Not fully solved yet:
+
+- automatic glossary injection in the `sample` stage
+- dedicated handling rules for scholar names, person names, and place names
+- stronger disambiguation when multiple glossary datasets can all match the same phrase
+- a polished glossary repair path that reliably fixes mismatches on real books
+- cleaner, narrower structured spans in `regional_auto_fixes`
+- broader validation across more book types, not only the current technical and technology-history samples
 
 Translation-stage integration:
 
