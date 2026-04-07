@@ -45,6 +45,10 @@ Key commits:
 - `627dfff` `feat: add NAER glossary integration pipeline`
 - `5074197` `feat: auto-select glossary datasets per chunk`
 - `f52a4a3` `fix: harden glossary repair matching`
+- `392c4af` `feat: add bulk NAER glossary import`
+- `175d5ef` `feat: add regional lexicon audit integration`
+- `1b86f37` `fix: expose regional backend availability in audits`
+- `474adaf` `docs: clarify opencc dependency for regional audit`
 
 ## Data And Validation Used
 
@@ -94,6 +98,37 @@ Current interpretation:
 - glossary lookup and audit are production-usable as `reference + QA`
 - glossary repair remains experimental
 
+## Regional Lexicon Audit Validation
+
+An audit-stage `zh-CN` to `zh-TW` regional lexicon normalization pass was also validated on real translated output from `What the Dormouse Said`, using these three existing translation variants of `chunk0017`:
+
+- `test-output/dormouse-ab/chunk0017.baseline.md`
+- `test-output/dormouse-ab/chunk0017.glossary.md`
+- `test-output/dormouse-ab/chunk0017.repaired.md`
+
+Validation command pattern:
+
+- `/Users/yoyodyne/lab/stories/translate-book-codex-skill/.venv/bin/python scripts/chunk_audit.py --temp-dir <sample-dir> --regional-lexicon-config s2twp --regional-lexicon-auto-fix --regional-lexicon-report`
+
+Observed behavior:
+
+- the OpenCC-backed pass correctly reported `regional_opencc_available: True` when run from the project venv
+- the baseline chunk surfaced both `residual_english` and `regional_lexicon`
+- the glossary chunk surfaced only `regional_lexicon`
+- the repaired chunk kept failing on `residual_english`, but the regional pass still applied useful fixes
+- repeated high-confidence fixes were directionally correct for Taiwan usage, including:
+  - `矽芯片 -> 矽晶片`
+  - `集成電路 -> 積體電路`
+  - `自動櫃員機網絡 -> 自動櫃員機網路`
+  - `設備 -> 裝置`
+- low-confidence findings remained report-only, for example:
+  - `項目 -> 專案`
+
+Important limitation exposed by this validation:
+
+- some `regional_auto_fixes` spans are still wider than ideal in the structured report, even when the resulting normalized text is correct
+- this means the text-level normalization is already useful, but the per-fix reporting UX still needs refinement before being treated as polished
+
 ## Operational Guidance
 
 Recommended default usage for now:
@@ -135,6 +170,6 @@ Recommended order for v1.x / v2 work:
 
 At the time this document was written:
 
-- `python3 -m unittest discover -s tests` passed with `65 tests`
+- `python3 -m unittest discover -s tests` passed with `91 tests`
 
 This confirms code correctness for the current branch state, but not final translation-quality sufficiency.
