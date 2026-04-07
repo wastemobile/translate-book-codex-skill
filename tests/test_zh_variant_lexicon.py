@@ -257,7 +257,9 @@ class RegionalLexiconDiffTests(unittest.TestCase):
         self.assertEqual(result[0]["replacement_text"], "後端和前端")
 
     def test_normalize_with_opencc_exposes_variant_change_report(self):
-        with mock.patch.object(zh_variant_lexicon, "generate_opencc_candidate", return_value="人工智慧系統"), mock.patch.object(
+        with mock.patch.object(zh_variant_lexicon, "opencc", None), mock.patch.object(
+            zh_variant_lexicon, "generate_opencc_candidate", return_value="人工智慧系統"
+        ), mock.patch.object(
             zh_variant_lexicon,
             "extract_variant_changes",
             return_value=[
