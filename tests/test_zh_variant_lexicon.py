@@ -125,6 +125,28 @@ class RegionalLexiconDiffTests(unittest.TestCase):
         self.assertEqual(result[1]["source_text"], "网络")
         self.assertEqual(result[1]["replacement_text"], "網路")
 
+    def test_extract_variant_changes_keeps_adjacent_separator_outside_phrase_spans(self):
+        result = zh_variant_lexicon.extract_variant_changes(
+            "软件和硬件",
+            "軟體和硬體",
+        )
+
+        self.assertEqual(
+            [item["source_text"] for item in result],
+            ["软件", "硬件"],
+        )
+        self.assertEqual(
+            [item["replacement_text"] for item in result],
+            ["軟體", "硬體"],
+        )
+        self.assertTrue(all("和" not in item["source_text"] for item in result))
+
+    def test_extract_variant_changes_marks_multi_token_rewrite_low(self):
+        result = zh_variant_lexicon.extract_variant_changes("关于网络", "關於網路")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
+
     def test_extract_variant_changes_returns_empty_list_for_noop_conversion(self):
         result = zh_variant_lexicon.extract_variant_changes("人工智慧系統", "人工智慧系統")
 
