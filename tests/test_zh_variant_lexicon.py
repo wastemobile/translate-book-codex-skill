@@ -82,6 +82,89 @@ class OpenCCWrapperTests(unittest.TestCase):
                 "config": "s2twp",
                 "opencc_available": True,
                 "changed": True,
+                "variant_changes": [
+                    {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                    {"source_text": "网络", "replacement_text": "網路", "confidence": "high", "start": 8, "end": 10},
+                ],
+                "regional_auto_fixes": [
+                    {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                    {"source_text": "网络", "replacement_text": "網路", "confidence": "high", "start": 8, "end": 10},
+                ],
+                "regional_flagged_variants": [],
+                "normalized_text": "人工智慧系統依賴網路。",
+            },
+        )
+
+
+class RegionalLexiconDiffTests(unittest.TestCase):
+    def test_extract_variant_changes_returns_structured_phrase_replacements(self):
+        result = zh_variant_lexicon.extract_variant_changes(
+            "人工智能系統依賴网络和芯片。",
+            "人工智慧系統依賴網路和晶片。",
+        )
+
+        self.assertEqual(
+            [item["source_text"] for item in result],
+            ["人工智能", "网络", "芯片"],
+        )
+        self.assertEqual(
+            [item["replacement_text"] for item in result],
+            ["人工智慧", "網路", "晶片"],
+        )
+        self.assertTrue(all(item["confidence"] == "high" for item in result))
+        self.assertEqual(result[0]["start"], 0)
+        self.assertEqual(result[0]["end"], 4)
+
+    def test_extract_variant_changes_marks_single_character_changes_low(self):
+        result = zh_variant_lexicon.extract_variant_changes("后", "後")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
+        self.assertEqual(result[0]["source_text"], "后")
+        self.assertEqual(result[0]["replacement_text"], "後")
+
+    def test_apply_high_confidence_variant_fixes_only_rewrites_high_confidence_spans(self):
+        changes = [
+            {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+            {"source_text": "后", "replacement_text": "後", "confidence": "low", "start": 4, "end": 5},
+        ]
+
+        result = zh_variant_lexicon.apply_high_confidence_variant_fixes("人工智能后", changes)
+
+        self.assertEqual(result, "人工智慧后")
+
+    def test_normalize_with_opencc_exposes_variant_change_report(self):
+        with mock.patch.object(zh_variant_lexicon, "generate_opencc_candidate", return_value="人工智慧系統"), mock.patch.object(
+            zh_variant_lexicon,
+            "extract_variant_changes",
+            return_value=[
+            {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+            ],
+        ) as changes_mock, mock.patch.object(
+            zh_variant_lexicon,
+            "apply_high_confidence_variant_fixes",
+            return_value="人工智慧系統",
+        ) as apply_mock:
+            result = zh_variant_lexicon.normalize_with_opencc("人工智能系統")
+
+        changes_mock.assert_called_once_with("人工智能系統", "人工智慧系統")
+        apply_mock.assert_called_once()
+        self.assertEqual(
+            result,
+            {
+                "original_text": "人工智能系統",
+                "candidate_text": "人工智慧系統",
+                "config": "s2twp",
+                "opencc_available": False,
+                "changed": True,
+                "variant_changes": [
+                    {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                ],
+                "regional_auto_fixes": [
+                    {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                ],
+                "regional_flagged_variants": [],
+                "normalized_text": "人工智慧系統",
             },
         )
 
