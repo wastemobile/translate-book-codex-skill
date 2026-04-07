@@ -132,6 +132,7 @@ class AuditChunkTests(unittest.TestCase):
                 "normalize_with_opencc",
                 return_value={
                     "normalized_text": "人工智慧系統依賴網路。",
+                    "opencc_available": True,
                     "regional_auto_fixes": [
                         {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
                     ],
@@ -149,6 +150,7 @@ class AuditChunkTests(unittest.TestCase):
             normalize_mock.assert_called_once_with("人工智能系统依赖网络。", config="s2twp")
             self.assertTrue(result["ok"])
             self.assertEqual(result["normalized_text"], "人工智慧系統依賴網路。")
+            self.assertTrue(result["regional_opencc_available"])
             self.assertEqual(len(result["regional_auto_fixes"]), 1)
             self.assertEqual(result["regional_flagged_variants"], [])
             self.assertNotIn("regional_lexicon", result["reasons"])
@@ -157,6 +159,7 @@ class AuditChunkTests(unittest.TestCase):
                 "normalize_with_opencc",
                 return_value={
                     "normalized_text": "人工智慧系統依賴網路。",
+                    "opencc_available": True,
                     "regional_auto_fixes": [
                         {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
                     ],
@@ -171,8 +174,10 @@ class AuditChunkTests(unittest.TestCase):
                 )
             self.assertEqual(report["checked"], 1)
             self.assertEqual(report["passed"], 1)
+            self.assertTrue(report["regional_opencc_available"])
             self.assertEqual(report["issues"], [])
             self.assertEqual(report["chunks"][0]["normalized_text"], "人工智慧系統依賴網路。")
+            self.assertTrue(report["chunks"][0]["regional_opencc_available"])
             self.assertEqual(len(report["chunks"][0]["regional_auto_fixes"]), 1)
             self.assertFalse(report["chunks"][0]["regional_flagged_variants"])
             self.assertTrue(report["chunks"][0]["ok"])
@@ -189,6 +194,7 @@ class AuditChunkTests(unittest.TestCase):
                 "normalize_with_opencc",
                 return_value={
                     "normalized_text": "支援線上音樂和網路。",
+                    "opencc_available": True,
                     "regional_auto_fixes": [
                         {"source_text": "音乐", "replacement_text": "音樂", "confidence": "high", "start": 4, "end": 6},
                         {"source_text": "网络", "replacement_text": "網路", "confidence": "high", "start": 7, "end": 9},
@@ -209,12 +215,14 @@ class AuditChunkTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("regional_lexicon", result["reasons"])
             self.assertEqual(result["normalized_text"], "支援線上音樂和網路。")
+            self.assertTrue(result["regional_opencc_available"])
             self.assertEqual(len(result["regional_flagged_variants"]), 1)
             with mock.patch.object(
                 chunk_audit,
                 "normalize_with_opencc",
                 return_value={
                     "normalized_text": "支援線上音樂和網路。",
+                    "opencc_available": True,
                     "regional_auto_fixes": [
                         {"source_text": "音乐", "replacement_text": "音樂", "confidence": "high", "start": 4, "end": 6},
                         {"source_text": "网络", "replacement_text": "網路", "confidence": "high", "start": 7, "end": 9},
@@ -232,10 +240,13 @@ class AuditChunkTests(unittest.TestCase):
                 )
             self.assertEqual(report["checked"], 1)
             self.assertEqual(report["failed"], 1)
+            self.assertTrue(report["regional_opencc_available"])
             self.assertEqual(report["chunks"][0]["normalized_text"], "支援線上音樂和網路。")
+            self.assertTrue(report["chunks"][0]["regional_opencc_available"])
             self.assertEqual(len(report["chunks"][0]["regional_flagged_variants"]), 1)
             self.assertIn("regional_lexicon", report["chunks"][0]["reasons"])
             self.assertEqual(report["issues"][0]["normalized_text"], "支援線上音樂和網路。")
+            self.assertTrue(report["issues"][0]["regional_opencc_available"])
             self.assertEqual(len(report["issues"][0]["regional_flagged_variants"]), 1)
             self.assertIn("regional_lexicon", report["issues"][0]["reasons"])
 
@@ -267,6 +278,7 @@ class PromotionTests(unittest.TestCase):
                 "normalize_with_opencc",
                 return_value={
                     "normalized_text": "人工智慧系統依賴網路。",
+                    "opencc_available": True,
                     "regional_auto_fixes": [
                         {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
                     ],
@@ -321,9 +333,36 @@ class PromotionTests(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertEqual(result["normalized_text"], "人工智能系统依赖网络。")
+            self.assertFalse(result["regional_opencc_available"])
             self.assertEqual(result["regional_auto_fixes"], [])
             self.assertEqual(result["regional_flagged_variants"], [])
             self.assertEqual(result["reasons"], [])
+
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "original_text": "人工智能系统依赖网络。",
+                    "candidate_text": "人工智能系统依赖网络。",
+                    "config": "s2twp",
+                    "opencc_available": False,
+                    "changed": False,
+                    "variant_changes": [],
+                    "regional_auto_fixes": [],
+                    "regional_flagged_variants": [],
+                    "normalized_text": "人工智能系统依赖网络。",
+                },
+            ):
+                report = chunk_audit.audit_temp_dir(
+                    temp_dir,
+                    regional_lexicon_config="s2twp",
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+
+            self.assertEqual(report["regional_opencc_available"], False)
+            self.assertEqual(report["chunks"][0]["regional_opencc_available"], False)
+            self.assertEqual(report["issues"], [])
 
 
 if __name__ == "__main__":

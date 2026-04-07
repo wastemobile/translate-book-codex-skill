@@ -150,6 +150,7 @@ python3 scripts/chunk_audit.py \
 ```
 
 If OpenCC is not installed, the regional lexicon pass degrades gracefully and leaves the chunk unchanged while still returning a structured audit report.
+That report includes a `regional_opencc_available` signal in the chunk-level and temp-dir summaries so you can see whether the backend was available when the report was generated.
 
 Translation-stage integration:
 

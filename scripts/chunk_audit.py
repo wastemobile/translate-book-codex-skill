@@ -81,8 +81,10 @@ def audit_chunk(
     normalized_text = translated_text
     regional_auto_fixes = []
     regional_flagged_variants = []
+    regional_opencc_available = None
     if regional_lexicon_config or regional_lexicon_auto_fix or regional_lexicon_report:
         regional_result = normalize_with_opencc(translated_text, config=regional_lexicon_config or "s2twp")
+        regional_opencc_available = regional_result["opencc_available"]
         normalized_text = (
             regional_result["normalized_text"]
             if regional_lexicon_auto_fix
@@ -97,6 +99,7 @@ def audit_chunk(
         "ok": not reasons,
         "reasons": reasons,
         "normalized_text": normalized_text,
+        "regional_opencc_available": regional_opencc_available,
         "regional_auto_fixes": regional_auto_fixes,
         "regional_flagged_variants": regional_flagged_variants,
     }
@@ -114,14 +117,22 @@ def audit_temp_dir(
     regional_lexicon_auto_fix=False,
     regional_lexicon_report=False,
 ):
-    report = {"checked": 0, "passed": 0, "failed": 0, "promoted": 0, "issues": [], "chunks": []}
+    report = {
+        "checked": 0,
+        "passed": 0,
+        "failed": 0,
+        "promoted": 0,
+        "issues": [],
+        "chunks": [],
+        "regional_opencc_available": None,
+    }
     for refined in sorted(glob.glob(os.path.join(temp_dir, "refined_chunk*.md"))):
         chunk_name = os.path.basename(refined).replace("refined_", "", 1)
         source = os.path.join(temp_dir, chunk_name)
         output = os.path.join(temp_dir, f"output_{chunk_name}")
         if not os.path.exists(source):
             report["failed"] += 1
-            issue = {"source": source, "reasons": ["missing_source"]}
+            issue = {"source": source, "reasons": ["missing_source"], "regional_opencc_available": report["regional_opencc_available"]}
             report["issues"].append(issue)
             report["chunks"].append({"source": source, "refined": refined, "ok": False, **issue})
             continue
@@ -138,6 +149,8 @@ def audit_temp_dir(
             regional_lexicon_auto_fix=regional_lexicon_auto_fix,
             regional_lexicon_report=regional_lexicon_report,
         )
+        if result["regional_opencc_available"] is not None:
+            report["regional_opencc_available"] = result["regional_opencc_available"]
         report["checked"] += 1
         chunk_entry = {
             "source": source,
@@ -145,6 +158,7 @@ def audit_temp_dir(
             "ok": result["ok"],
             "reasons": result["reasons"],
             "normalized_text": result["normalized_text"],
+            "regional_opencc_available": result["regional_opencc_available"],
             "regional_auto_fixes": result["regional_auto_fixes"],
             "regional_flagged_variants": result["regional_flagged_variants"],
             "promoted": False,
@@ -165,6 +179,7 @@ def audit_temp_dir(
                     "source": source,
                     "reasons": result["reasons"],
                     "normalized_text": result["normalized_text"],
+                    "regional_opencc_available": result["regional_opencc_available"],
                     "regional_auto_fixes": result["regional_auto_fixes"],
                     "regional_flagged_variants": result["regional_flagged_variants"],
                 }
