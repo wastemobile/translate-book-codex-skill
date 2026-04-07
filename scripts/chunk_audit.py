@@ -9,6 +9,7 @@ import shutil
 
 from local_model_client import read_text
 from naer_terms import auto_select_datasets, check_term_mismatches
+from zh_variant_lexicon import normalize_with_opencc
 
 
 ENGLISH_WORD_RE = re.compile(r"\b[A-Za-z]{4,}\b")
@@ -33,6 +34,9 @@ def audit_chunk(
     glossary_domain=None,
     glossary_auto_select=False,
     glossary_auto_max_datasets=2,
+    regional_lexicon_config=None,
+    regional_lexicon_auto_fix=False,
+    regional_lexicon_report=False,
 ):
     source_text = read_text(source_path)
     translated_text = read_text(translated_path)
@@ -74,7 +78,28 @@ def audit_chunk(
         if mismatch_report["mismatches"]:
             reasons.append("term_mismatch")
 
-    return {"ok": not reasons, "reasons": reasons}
+    normalized_text = translated_text
+    regional_auto_fixes = []
+    regional_flagged_variants = []
+    if regional_lexicon_config or regional_lexicon_auto_fix or regional_lexicon_report:
+        regional_result = normalize_with_opencc(translated_text, config=regional_lexicon_config or "s2twp")
+        normalized_text = (
+            regional_result["normalized_text"]
+            if regional_lexicon_auto_fix
+            else translated_text
+        )
+        regional_auto_fixes = regional_result["regional_auto_fixes"]
+        regional_flagged_variants = regional_result["regional_flagged_variants"]
+        if regional_flagged_variants:
+            reasons.append("regional_lexicon")
+
+    return {
+        "ok": not reasons,
+        "reasons": reasons,
+        "normalized_text": normalized_text,
+        "regional_auto_fixes": regional_auto_fixes,
+        "regional_flagged_variants": regional_flagged_variants,
+    }
 
 
 def audit_temp_dir(
@@ -85,6 +110,9 @@ def audit_temp_dir(
     glossary_domain=None,
     glossary_auto_select=False,
     glossary_auto_max_datasets=2,
+    regional_lexicon_config=None,
+    regional_lexicon_auto_fix=False,
+    regional_lexicon_report=False,
 ):
     report = {"checked": 0, "passed": 0, "failed": 0, "promoted": 0, "issues": []}
     for refined in sorted(glob.glob(os.path.join(temp_dir, "refined_chunk*.md"))):
@@ -104,12 +132,18 @@ def audit_temp_dir(
             glossary_domain=glossary_domain,
             glossary_auto_select=glossary_auto_select,
             glossary_auto_max_datasets=glossary_auto_max_datasets,
+            regional_lexicon_config=regional_lexicon_config,
+            regional_lexicon_auto_fix=regional_lexicon_auto_fix,
+            regional_lexicon_report=regional_lexicon_report,
         )
         report["checked"] += 1
         if result["ok"]:
             report["passed"] += 1
             if promote:
                 shutil.copyfile(refined, output)
+                if regional_lexicon_auto_fix:
+                    with open(output, "w", encoding="utf-8") as handle:
+                        handle.write(result["normalized_text"])
                 report["promoted"] += 1
         else:
             report["failed"] += 1
@@ -126,6 +160,9 @@ def main():
     parser.add_argument("--glossary-domain")
     parser.add_argument("--glossary-auto-select", action="store_true")
     parser.add_argument("--glossary-auto-max-datasets", type=int, default=2)
+    parser.add_argument("--regional-lexicon-config")
+    parser.add_argument("--regional-lexicon-auto-fix", action="store_true")
+    parser.add_argument("--regional-lexicon-report", action="store_true")
     args = parser.parse_args()
     print(
         audit_temp_dir(
@@ -136,6 +173,9 @@ def main():
             glossary_domain=args.glossary_domain,
             glossary_auto_select=args.glossary_auto_select,
             glossary_auto_max_datasets=args.glossary_auto_max_datasets,
+            regional_lexicon_config=args.regional_lexicon_config,
+            regional_lexicon_auto_fix=args.regional_lexicon_auto_fix,
+            regional_lexicon_report=args.regional_lexicon_report,
         )
     )
 

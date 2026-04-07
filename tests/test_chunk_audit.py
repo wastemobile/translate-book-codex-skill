@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -119,6 +120,73 @@ class AuditChunkTests(unittest.TestCase):
             )
             self.assertFalse(result["ok"])
 
+    def test_applies_regional_lexicon_auto_fix_and_reports_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "chunk0001.md"
+            refined = Path(temp_dir) / "refined_chunk0001.md"
+            source.write_text("人工智能系统依赖网络。", encoding="utf-8")
+            refined.write_text("人工智能系统依赖网络。", encoding="utf-8")
+
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "normalized_text": "人工智慧系統依賴網路。",
+                    "regional_auto_fixes": [
+                        {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                    ],
+                    "regional_flagged_variants": [],
+                },
+            ) as normalize_mock:
+                result = chunk_audit.audit_chunk(
+                    str(source),
+                    str(refined),
+                    regional_lexicon_config="s2twp",
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+
+        normalize_mock.assert_called_once_with("人工智能系统依赖网络。", config="s2twp")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["normalized_text"], "人工智慧系統依賴網路。")
+        self.assertEqual(len(result["regional_auto_fixes"]), 1)
+        self.assertEqual(result["regional_flagged_variants"], [])
+        self.assertNotIn("regional_lexicon", result["reasons"])
+
+    def test_flags_regional_lexicon_when_flagged_variants_remain(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "chunk0001.md"
+            refined = Path(temp_dir) / "refined_chunk0001.md"
+            source.write_text("支持在线音乐和网络。", encoding="utf-8")
+            refined.write_text("支援線上音樂和網路。", encoding="utf-8")
+
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "normalized_text": "支援線上音樂和網路。",
+                    "regional_auto_fixes": [
+                        {"source_text": "音乐", "replacement_text": "音樂", "confidence": "high", "start": 4, "end": 6},
+                        {"source_text": "网络", "replacement_text": "網路", "confidence": "high", "start": 7, "end": 9},
+                    ],
+                    "regional_flagged_variants": [
+                        {"source_text": "支持在线", "replacement_text": "支援線上", "confidence": "low", "start": 0, "end": 4},
+                    ],
+                },
+            ):
+                result = chunk_audit.audit_chunk(
+                    str(source),
+                    str(refined),
+                    regional_lexicon_config="s2twp",
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+
+        self.assertFalse(result["ok"])
+        self.assertIn("regional_lexicon", result["reasons"])
+        self.assertEqual(result["normalized_text"], "支援線上音樂和網路。")
+        self.assertEqual(len(result["regional_flagged_variants"]), 1)
+
 
 class PromotionTests(unittest.TestCase):
     def test_promotes_clean_refined_chunk_to_output(self):
@@ -134,6 +202,36 @@ class PromotionTests(unittest.TestCase):
             self.assertEqual(
                 (temp_path / "output_chunk0001.md").read_text(encoding="utf-8"),
                 "你好，世界",
+            )
+
+    def test_promotes_normalized_chunk_to_output_when_regional_auto_fix_is_enabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            (temp_path / "chunk0001.md").write_text("人工智能系统依赖网络。", encoding="utf-8")
+            (temp_path / "refined_chunk0001.md").write_text("人工智能系统依赖网络。", encoding="utf-8")
+
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "normalized_text": "人工智慧系統依賴網路。",
+                    "regional_auto_fixes": [
+                        {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                    ],
+                    "regional_flagged_variants": [],
+                },
+            ):
+                report = chunk_audit.audit_temp_dir(
+                    temp_dir,
+                    promote=True,
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+
+            self.assertEqual(report["promoted"], 1)
+            self.assertEqual(
+                (temp_path / "output_chunk0001.md").read_text(encoding="utf-8"),
+                "人工智慧系統依賴網路。",
             )
 
 
