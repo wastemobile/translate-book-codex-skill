@@ -115,6 +115,21 @@ class RegionalLexiconDiffTests(unittest.TestCase):
         self.assertEqual(result[0]["start"], 0)
         self.assertEqual(result[0]["end"], 4)
 
+    def test_extract_variant_changes_groups_nearby_phrase_replacements(self):
+        result = zh_variant_lexicon.extract_variant_changes(
+            "人工智能系統依賴网络和芯片。",
+            "人工智慧系統依賴網路和晶片。",
+        )
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[1]["source_text"], "网络")
+        self.assertEqual(result[1]["replacement_text"], "網路")
+
+    def test_extract_variant_changes_returns_empty_list_for_noop_conversion(self):
+        result = zh_variant_lexicon.extract_variant_changes("人工智慧系統", "人工智慧系統")
+
+        self.assertEqual(result, [])
+
     def test_extract_variant_changes_marks_single_character_changes_low(self):
         result = zh_variant_lexicon.extract_variant_changes("后", "後")
 
@@ -131,7 +146,15 @@ class RegionalLexiconDiffTests(unittest.TestCase):
 
         result = zh_variant_lexicon.apply_high_confidence_variant_fixes("人工智能后", changes)
 
-        self.assertEqual(result, "人工智慧后")
+        self.assertEqual(result["normalized_text"], "人工智慧后")
+        self.assertEqual(len(result["regional_auto_fixes"]), 1)
+        self.assertEqual(len(result["regional_flagged_variants"]), 1)
+
+    def test_extract_variant_changes_marks_punctuation_only_changes_low(self):
+        result = zh_variant_lexicon.extract_variant_changes("，", "。")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
 
     def test_normalize_with_opencc_exposes_variant_change_report(self):
         with mock.patch.object(zh_variant_lexicon, "generate_opencc_candidate", return_value="人工智慧系統"), mock.patch.object(
@@ -143,7 +166,13 @@ class RegionalLexiconDiffTests(unittest.TestCase):
         ) as changes_mock, mock.patch.object(
             zh_variant_lexicon,
             "apply_high_confidence_variant_fixes",
-            return_value="人工智慧系統",
+            return_value={
+                "normalized_text": "人工智慧系統",
+                "regional_auto_fixes": [
+                    {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                ],
+                "regional_flagged_variants": [],
+            },
         ) as apply_mock:
             result = zh_variant_lexicon.normalize_with_opencc("人工智能系統")
 
