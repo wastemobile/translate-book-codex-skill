@@ -149,6 +149,11 @@ python3 scripts/chunk_audit.py \
   --regional-lexicon-report
 ```
 
+Dependency note:
+
+- OpenCC is an optional dependency for regional lexicon normalization
+- install a Python OpenCC runtime such as `opencc-python-reimplemented` if you want this audit pass to perform regional lexicon detection and auto-fix work
+
 If OpenCC is not installed, the regional lexicon pass degrades gracefully and leaves the chunk unchanged while still returning a structured audit report.
 That report includes a `regional_opencc_available` signal in the chunk-level and temp-dir summaries so you can see whether the backend was available when the report was generated.
 
