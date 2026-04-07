@@ -69,6 +69,7 @@ def audit_chunk(
             translated_text=translated_text,
             dataset=glossary_dataset_filter,
             domain=glossary_domain,
+            high_confidence_only=True,
         )
         if mismatch_report["mismatches"]:
             reasons.append("term_mismatch")

@@ -29,11 +29,17 @@ def discover_pending_chunks(temp_dir):
     return pending
 
 
-def build_glossary_block(glossary_db, source_text, dataset=None, domain=None):
+def build_glossary_block(glossary_db, source_text, dataset=None, domain=None, high_confidence_only=False):
     if not glossary_db:
         return ""
-    hits = find_glossary_hits(glossary_db, source_text, dataset=dataset, domain=domain)
-    return render_glossary_block(hits)
+    hits = find_glossary_hits(
+        glossary_db,
+        source_text,
+        dataset=dataset,
+        domain=domain,
+        high_confidence_only=high_confidence_only,
+    )
+    return render_glossary_block(hits, high_confidence_only=high_confidence_only)
 
 
 def build_prompt(source_text, target_lang, glossary_block=""):
@@ -75,6 +81,7 @@ def generate_translation(
         source_text,
         dataset=glossary_dataset_filter,
         domain=glossary_domain,
+        high_confidence_only=True,
     )
     prompt = build_prompt(source_text, target_lang, glossary_block=glossary_block)
     return generate_text(

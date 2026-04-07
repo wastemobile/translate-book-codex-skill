@@ -74,6 +74,7 @@ class AuditChunkTests(unittest.TestCase):
                 translated_text="編譯程式處理算術。",
                 dataset="電子計算機名詞",
                 domain="computer-science",
+                high_confidence_only=True,
             )
             self.assertFalse(result["ok"])
             self.assertIn("term_mismatch", result["reasons"])
@@ -114,6 +115,7 @@ class AuditChunkTests(unittest.TestCase):
                 translated_text="編譯程式處理算術。",
                 dataset=["電子計算機名詞"],
                 domain=None,
+                high_confidence_only=True,
             )
             self.assertFalse(result["ok"])
 

@@ -78,6 +78,7 @@ class DraftTranslationPipelineTests(unittest.TestCase):
             "A compiler is here.",
             dataset="電子計算機名詞",
             domain="computer-science",
+            high_confidence_only=True,
         )
         self.assertIn(
             "Terminology references for this chunk:",
@@ -116,6 +117,7 @@ class DraftTranslationPipelineTests(unittest.TestCase):
             "A compiler is here.",
             dataset=["電子計算機名詞", "電機工程名詞"],
             domain=None,
+            high_confidence_only=True,
         )
 
     def test_process_temp_dir_writes_draft_outputs(self):
