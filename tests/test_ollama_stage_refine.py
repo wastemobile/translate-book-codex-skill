@@ -31,6 +31,18 @@ class DiscoverPendingRefinementsTests(unittest.TestCase):
 
 
 class RefinePipelineTests(unittest.TestCase):
+    def test_build_prompt_includes_glossary_block_when_present(self):
+        prompt = ollama_stage_refine.build_prompt(
+            "A compiler handles arithmetic.",
+            "一個編譯程式處理算術。",
+            "Traditional Chinese",
+            glossary_block="Terminology references for this chunk:\n- compiler -> 編譯器",
+        )
+
+        self.assertIn("Terminology references for this chunk:", prompt)
+        self.assertIn("- compiler -> 編譯器", prompt)
+        self.assertIn("DRAFT:", prompt)
+
     def test_generate_refinement_uses_omlx_defaults(self):
         with mock.patch.object(
             ollama_stage_refine,
@@ -47,6 +59,35 @@ class RefinePipelineTests(unittest.TestCase):
             api_base="http://127.0.0.1:8000/v1",
             api_key=None,
             temperature=0.1,
+        )
+
+    def test_generate_refinement_uses_glossary_lookup_when_db_configured(self):
+        with mock.patch.object(
+            ollama_stage_refine,
+            "build_glossary_block",
+            return_value="Terminology references for this chunk:\n- compiler -> 編譯器",
+        ) as glossary_mock, mock.patch.object(
+            ollama_stage_refine,
+            "generate_text",
+            return_value="編譯器",
+        ) as generate_mock:
+            ollama_stage_refine.generate_refinement(
+                "A compiler is here.",
+                "一個編譯程式在這裡。",
+                glossary_db="terms.sqlite3",
+                glossary_dataset="電子計算機名詞",
+                glossary_domain="computer-science",
+            )
+
+        glossary_mock.assert_called_once_with(
+            "terms.sqlite3",
+            "A compiler is here.",
+            dataset="電子計算機名詞",
+            domain="computer-science",
+        )
+        self.assertIn(
+            "Terminology references for this chunk:",
+            generate_mock.call_args.args[0],
         )
 
     def test_process_temp_dir_writes_refined_outputs(self):

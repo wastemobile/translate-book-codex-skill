@@ -69,6 +69,72 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 - `tests/`: unit tests for the vendored pipeline and provider-flexible local model stages
 - `docs/superpowers/`: design spec and implementation plan
 
+## NAER Glossary Prototype
+
+This repository now includes an experimental glossary pipeline for importing NAER term downloads and using them as chunk-level translation references.
+
+Script:
+
+- `scripts/naer_terms.py`
+
+Current capabilities:
+
+- download a NAER `.zip` term package and extract the first `.ods`
+- parse `.ods` sheet data into normalized term rows without requiring LibreOffice
+- import those rows into a local `SQLite` glossary database
+- query a Markdown chunk for matched glossary terms
+- render a prompt-ready terminology block
+- check a translated chunk for glossary mismatches
+- inject glossary references into Stage 2 and Stage 3 prompts
+- let `chunk_audit.py` flag `term_mismatch` cases during final review
+
+Example flow:
+
+```bash
+python3 scripts/naer_terms.py download \
+  --url "https://terms.naer.edu.tw/media/terms_data/1/..." \
+  --out-dir ./test-output/naer
+
+python3 scripts/naer_terms.py import \
+  --ods ./test-output/naer/電子計算機名詞.ods \
+  --db ./test-output/naer/terms.sqlite3 \
+  --dataset "電子計算機名詞" \
+  --domain "computer-science"
+
+python3 scripts/naer_terms.py query \
+  --db ./test-output/naer/terms.sqlite3 \
+  --chunk ./sample_chunk.md \
+  --dataset "電子計算機名詞" \
+  --format prompt
+```
+
+The prototype uses a `reference + QA` policy:
+
+- glossary hits are injected as translation references, not hard replacements
+- post-translation checks flag `term_mismatch` cases where expected terminology was not used
+
+Translation-stage integration:
+
+```bash
+python3 scripts/ollama_stage_translate.py \
+  --temp-dir ./book_temp \
+  --glossary-db ./test-output/naer/terms.sqlite3 \
+  --glossary-dataset "電子計算機名詞" \
+  --glossary-domain "computer-science"
+
+python3 scripts/ollama_stage_refine.py \
+  --temp-dir ./book_temp \
+  --glossary-db ./test-output/naer/terms.sqlite3 \
+  --glossary-dataset "電子計算機名詞" \
+  --glossary-domain "computer-science"
+
+python3 scripts/chunk_audit.py \
+  --temp-dir ./book_temp \
+  --glossary-db ./test-output/naer/terms.sqlite3 \
+  --glossary-dataset "電子計算機名詞" \
+  --glossary-domain "computer-science"
+```
+
 ## Quick Flow
 
 1. Run `scripts/convert.py` on a source `pdf`, `docx`, or `epub`.

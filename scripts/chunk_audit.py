@@ -7,7 +7,8 @@ import os
 import re
 import shutil
 
-from ollama_common import read_text
+from local_model_client import read_text
+from naer_terms import check_term_mismatches
 
 
 ENGLISH_WORD_RE = re.compile(r"\b[A-Za-z]{4,}\b")
@@ -24,7 +25,13 @@ def _markdown_signal_count(text):
     )
 
 
-def audit_chunk(source_path, translated_path):
+def audit_chunk(
+    source_path,
+    translated_path,
+    glossary_db=None,
+    glossary_dataset=None,
+    glossary_domain=None,
+):
     source_text = read_text(source_path)
     translated_text = read_text(translated_path)
 
@@ -44,10 +51,27 @@ def audit_chunk(source_path, translated_path):
     if source_markdown and translated_markdown < max(0, source_markdown - 3):
         reasons.append("markdown_mismatch")
 
+    if glossary_db:
+        mismatch_report = check_term_mismatches(
+            glossary_db,
+            source_text=source_text,
+            translated_text=translated_text,
+            dataset=glossary_dataset,
+            domain=glossary_domain,
+        )
+        if mismatch_report["mismatches"]:
+            reasons.append("term_mismatch")
+
     return {"ok": not reasons, "reasons": reasons}
 
 
-def audit_temp_dir(temp_dir, promote=False):
+def audit_temp_dir(
+    temp_dir,
+    promote=False,
+    glossary_db=None,
+    glossary_dataset=None,
+    glossary_domain=None,
+):
     report = {"checked": 0, "passed": 0, "failed": 0, "promoted": 0, "issues": []}
     for refined in sorted(glob.glob(os.path.join(temp_dir, "refined_chunk*.md"))):
         chunk_name = os.path.basename(refined).replace("refined_", "", 1)
@@ -58,7 +82,13 @@ def audit_temp_dir(temp_dir, promote=False):
             report["issues"].append({"source": source, "reasons": ["missing_source"]})
             continue
 
-        result = audit_chunk(source, refined)
+        result = audit_chunk(
+            source,
+            refined,
+            glossary_db=glossary_db,
+            glossary_dataset=glossary_dataset,
+            glossary_domain=glossary_domain,
+        )
         report["checked"] += 1
         if result["ok"]:
             report["passed"] += 1
@@ -75,8 +105,19 @@ def main():
     parser = argparse.ArgumentParser(description="Audit refined chunks before final merge.")
     parser.add_argument("--temp-dir", required=True)
     parser.add_argument("--promote", action="store_true")
+    parser.add_argument("--glossary-db")
+    parser.add_argument("--glossary-dataset")
+    parser.add_argument("--glossary-domain")
     args = parser.parse_args()
-    print(audit_temp_dir(args.temp_dir, promote=args.promote))
+    print(
+        audit_temp_dir(
+            args.temp_dir,
+            promote=args.promote,
+            glossary_db=args.glossary_db,
+            glossary_dataset=args.glossary_dataset,
+            glossary_domain=args.glossary_domain,
+        )
+    )
 
 
 if __name__ == "__main__":

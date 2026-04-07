@@ -48,6 +48,36 @@ class AuditChunkTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("residual_english", result["reasons"])
 
+    def test_flags_term_mismatch_when_glossary_check_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "chunk0001.md"
+            refined = Path(temp_dir) / "refined_chunk0001.md"
+            source.write_text("A compiler handles arithmetic.", encoding="utf-8")
+            refined.write_text("編譯程式處理算術。", encoding="utf-8")
+
+            with unittest.mock.patch.object(
+                chunk_audit,
+                "check_term_mismatches",
+                return_value={"matched_terms": 1, "mismatches": 1, "issues": [{"source_term": "compiler"}]},
+            ) as mismatch_mock:
+                result = chunk_audit.audit_chunk(
+                    str(source),
+                    str(refined),
+                    glossary_db="terms.sqlite3",
+                    glossary_dataset="電子計算機名詞",
+                    glossary_domain="computer-science",
+                )
+
+            mismatch_mock.assert_called_once_with(
+                "terms.sqlite3",
+                source_text="A compiler handles arithmetic.",
+                translated_text="編譯程式處理算術。",
+                dataset="電子計算機名詞",
+                domain="computer-science",
+            )
+            self.assertFalse(result["ok"])
+            self.assertIn("term_mismatch", result["reasons"])
+
 
 class PromotionTests(unittest.TestCase):
     def test_promotes_clean_refined_chunk_to_output(self):
