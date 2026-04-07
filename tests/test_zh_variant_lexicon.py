@@ -146,18 +146,21 @@ class RegionalLexiconDiffTests(unittest.TestCase):
 
         self.assertEqual(
             [item["source_text"] for item in result],
-            ["音乐"],
+            ["持在线", "音乐"],
         )
         self.assertEqual(
             [item["replacement_text"] for item in result],
-            ["音樂"],
+            ["援線上", "音樂"],
         )
-        self.assertTrue(all(item["confidence"] == "high" for item in result))
+        self.assertEqual([item["confidence"] for item in result], ["low", "high"])
 
     def test_extract_variant_changes_ignores_about_network_rewrite(self):
         result = zh_variant_lexicon.extract_variant_changes("关于网络", "關於網路")
 
-        self.assertEqual(result, [])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
+        self.assertEqual(result[0]["source_text"], "关于网络")
+        self.assertEqual(result[0]["replacement_text"], "關於網路")
 
     def test_extract_variant_changes_returns_empty_list_for_noop_conversion(self):
         result = zh_variant_lexicon.extract_variant_changes("人工智慧系統", "人工智慧系統")
@@ -167,7 +170,10 @@ class RegionalLexiconDiffTests(unittest.TestCase):
     def test_extract_variant_changes_ignores_ambiguous_single_character_changes(self):
         result = zh_variant_lexicon.extract_variant_changes("后", "後")
 
-        self.assertEqual(result, [])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
+        self.assertEqual(result[0]["source_text"], "后")
+        self.assertEqual(result[0]["replacement_text"], "後")
 
     def test_apply_high_confidence_variant_fixes_only_rewrites_high_confidence_spans(self):
         changes = [
@@ -184,7 +190,10 @@ class RegionalLexiconDiffTests(unittest.TestCase):
     def test_extract_variant_changes_marks_punctuation_only_changes_low(self):
         result = zh_variant_lexicon.extract_variant_changes("，", "。")
 
-        self.assertEqual(result, [])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
+        self.assertEqual(result[0]["source_text"], "，")
+        self.assertEqual(result[0]["replacement_text"], "。")
 
     def test_extract_variant_changes_ignores_broad_multi_token_rewrite(self):
         result = zh_variant_lexicon.extract_variant_changes(
@@ -192,7 +201,16 @@ class RegionalLexiconDiffTests(unittest.TestCase):
             "該軟體可用於雲端運算",
         )
 
-        self.assertEqual(result, [])
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(item["confidence"] == "low" for item in result))
+        self.assertEqual(
+            [item["source_text"] for item in result],
+            ["该软件", "于云计"],
+        )
+        self.assertEqual(
+            [item["replacement_text"] for item in result],
+            ["該軟體", "於雲端運"],
+        )
 
     def test_extract_variant_changes_ignores_broad_domain_rewrite(self):
         result = zh_variant_lexicon.extract_variant_changes(
@@ -200,7 +218,10 @@ class RegionalLexiconDiffTests(unittest.TestCase):
             "行動網際網路",
         )
 
-        self.assertEqual(result, [])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
+        self.assertEqual(result[0]["source_text"], "移动互联网")
+        self.assertEqual(result[0]["replacement_text"], "行動網際網路")
 
     def test_extract_variant_changes_ignores_connector_bounded_rewrite(self):
         result = zh_variant_lexicon.extract_variant_changes(
@@ -208,7 +229,10 @@ class RegionalLexiconDiffTests(unittest.TestCase):
             "後端和前端",
         )
 
-        self.assertEqual(result, [])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], "low")
+        self.assertEqual(result[0]["source_text"], "后")
+        self.assertEqual(result[0]["replacement_text"], "後")
 
     def test_normalize_with_opencc_exposes_variant_change_report(self):
         with mock.patch.object(zh_variant_lexicon, "generate_opencc_candidate", return_value="人工智慧系統"), mock.patch.object(

@@ -113,10 +113,13 @@ def classify_variant_change(
     candidate_start=None,
     candidate_end=None,
     boundary_strength="strong",
+    clean_local=False,
 ):
     if not source_text or not replacement_text:
         return "low"
     if source_text == replacement_text:
+        return "low"
+    if not clean_local:
         return "low"
     if _is_punctuation_only(source_text) or _is_punctuation_only(replacement_text):
         return "low"
@@ -160,6 +163,7 @@ def _refine_single_character_change(original_text, candidate_text, opcodes, inde
                     "candidate_start": candidate_start,
                     "candidate_end": j2,
                     "boundary_strength": "strong",
+                    "clean_local": True,
                 }
 
         if next_opcode is not None and next_opcode[0] == "equal":
@@ -177,6 +181,7 @@ def _refine_single_character_change(original_text, candidate_text, opcodes, inde
                         "candidate_start": j1,
                         "candidate_end": candidate_end,
                         "boundary_strength": "strong",
+                        "clean_local": True,
                     }
 
     if len(source_text) == 2 and len(replacement_text) == 2:
@@ -189,6 +194,7 @@ def _refine_single_character_change(original_text, candidate_text, opcodes, inde
                 "candidate_start": j1,
                 "candidate_end": j2,
                 "boundary_strength": "weak",
+                "clean_local": False,
             }
         return {
             "source_text": source_text,
@@ -198,9 +204,19 @@ def _refine_single_character_change(original_text, candidate_text, opcodes, inde
             "candidate_start": j1,
             "candidate_end": j2,
             "boundary_strength": "strong",
+            "clean_local": True,
         }
 
-    return None
+    return {
+        "source_text": source_text,
+        "replacement_text": replacement_text,
+        "start": i1,
+        "end": i2,
+        "candidate_start": j1,
+        "candidate_end": j2,
+        "boundary_strength": "weak",
+        "clean_local": False,
+    }
 
 
 def extract_variant_changes(original_text, candidate_text):
@@ -238,6 +254,7 @@ def extract_variant_changes(original_text, candidate_text):
                 candidate_start=refined_change["candidate_start"],
                 candidate_end=refined_change["candidate_end"],
                 boundary_strength=refined_change["boundary_strength"],
+                clean_local=refined_change["clean_local"],
             ),
             "start": refined_change["start"],
             "end": refined_change["end"],
