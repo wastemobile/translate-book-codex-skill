@@ -146,12 +146,36 @@ class AuditChunkTests(unittest.TestCase):
                     regional_lexicon_report=True,
                 )
 
-        normalize_mock.assert_called_once_with("人工智能系统依赖网络。", config="s2twp")
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["normalized_text"], "人工智慧系統依賴網路。")
-        self.assertEqual(len(result["regional_auto_fixes"]), 1)
-        self.assertEqual(result["regional_flagged_variants"], [])
-        self.assertNotIn("regional_lexicon", result["reasons"])
+            normalize_mock.assert_called_once_with("人工智能系统依赖网络。", config="s2twp")
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["normalized_text"], "人工智慧系統依賴網路。")
+            self.assertEqual(len(result["regional_auto_fixes"]), 1)
+            self.assertEqual(result["regional_flagged_variants"], [])
+            self.assertNotIn("regional_lexicon", result["reasons"])
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "normalized_text": "人工智慧系統依賴網路。",
+                    "regional_auto_fixes": [
+                        {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                    ],
+                    "regional_flagged_variants": [],
+                },
+            ):
+                report = chunk_audit.audit_temp_dir(
+                    temp_dir,
+                    regional_lexicon_config="s2twp",
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+            self.assertEqual(report["checked"], 1)
+            self.assertEqual(report["passed"], 1)
+            self.assertEqual(report["issues"], [])
+            self.assertEqual(report["chunks"][0]["normalized_text"], "人工智慧系統依賴網路。")
+            self.assertEqual(len(report["chunks"][0]["regional_auto_fixes"]), 1)
+            self.assertFalse(report["chunks"][0]["regional_flagged_variants"])
+            self.assertTrue(report["chunks"][0]["ok"])
 
     def test_flags_regional_lexicon_when_flagged_variants_remain(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -182,10 +206,38 @@ class AuditChunkTests(unittest.TestCase):
                     regional_lexicon_report=True,
                 )
 
-        self.assertFalse(result["ok"])
-        self.assertIn("regional_lexicon", result["reasons"])
-        self.assertEqual(result["normalized_text"], "支援線上音樂和網路。")
-        self.assertEqual(len(result["regional_flagged_variants"]), 1)
+            self.assertFalse(result["ok"])
+            self.assertIn("regional_lexicon", result["reasons"])
+            self.assertEqual(result["normalized_text"], "支援線上音樂和網路。")
+            self.assertEqual(len(result["regional_flagged_variants"]), 1)
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "normalized_text": "支援線上音樂和網路。",
+                    "regional_auto_fixes": [
+                        {"source_text": "音乐", "replacement_text": "音樂", "confidence": "high", "start": 4, "end": 6},
+                        {"source_text": "网络", "replacement_text": "網路", "confidence": "high", "start": 7, "end": 9},
+                    ],
+                    "regional_flagged_variants": [
+                        {"source_text": "支持在线", "replacement_text": "支援線上", "confidence": "low", "start": 0, "end": 4},
+                    ],
+                },
+            ):
+                report = chunk_audit.audit_temp_dir(
+                    temp_dir,
+                    regional_lexicon_config="s2twp",
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+            self.assertEqual(report["checked"], 1)
+            self.assertEqual(report["failed"], 1)
+            self.assertEqual(report["chunks"][0]["normalized_text"], "支援線上音樂和網路。")
+            self.assertEqual(len(report["chunks"][0]["regional_flagged_variants"]), 1)
+            self.assertIn("regional_lexicon", report["chunks"][0]["reasons"])
+            self.assertEqual(report["issues"][0]["normalized_text"], "支援線上音樂和網路。")
+            self.assertEqual(len(report["issues"][0]["regional_flagged_variants"]), 1)
+            self.assertIn("regional_lexicon", report["issues"][0]["reasons"])
 
 
 class PromotionTests(unittest.TestCase):
@@ -233,6 +285,8 @@ class PromotionTests(unittest.TestCase):
                 (temp_path / "output_chunk0001.md").read_text(encoding="utf-8"),
                 "人工智慧系統依賴網路。",
             )
+            self.assertEqual(report["chunks"][0]["normalized_text"], "人工智慧系統依賴網路。")
+            self.assertTrue(report["chunks"][0]["promoted"])
 
 
 if __name__ == "__main__":

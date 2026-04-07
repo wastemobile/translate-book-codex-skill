@@ -114,14 +114,16 @@ def audit_temp_dir(
     regional_lexicon_auto_fix=False,
     regional_lexicon_report=False,
 ):
-    report = {"checked": 0, "passed": 0, "failed": 0, "promoted": 0, "issues": []}
+    report = {"checked": 0, "passed": 0, "failed": 0, "promoted": 0, "issues": [], "chunks": []}
     for refined in sorted(glob.glob(os.path.join(temp_dir, "refined_chunk*.md"))):
         chunk_name = os.path.basename(refined).replace("refined_", "", 1)
         source = os.path.join(temp_dir, chunk_name)
         output = os.path.join(temp_dir, f"output_{chunk_name}")
         if not os.path.exists(source):
             report["failed"] += 1
-            report["issues"].append({"source": source, "reasons": ["missing_source"]})
+            issue = {"source": source, "reasons": ["missing_source"]}
+            report["issues"].append(issue)
+            report["chunks"].append({"source": source, "refined": refined, "ok": False, **issue})
             continue
 
         result = audit_chunk(
@@ -137,6 +139,16 @@ def audit_temp_dir(
             regional_lexicon_report=regional_lexicon_report,
         )
         report["checked"] += 1
+        chunk_entry = {
+            "source": source,
+            "refined": refined,
+            "ok": result["ok"],
+            "reasons": result["reasons"],
+            "normalized_text": result["normalized_text"],
+            "regional_auto_fixes": result["regional_auto_fixes"],
+            "regional_flagged_variants": result["regional_flagged_variants"],
+            "promoted": False,
+        }
         if result["ok"]:
             report["passed"] += 1
             if promote:
@@ -145,9 +157,19 @@ def audit_temp_dir(
                     with open(output, "w", encoding="utf-8") as handle:
                         handle.write(result["normalized_text"])
                 report["promoted"] += 1
+                chunk_entry["promoted"] = True
         else:
             report["failed"] += 1
-            report["issues"].append({"source": source, "reasons": result["reasons"]})
+            report["issues"].append(
+                {
+                    "source": source,
+                    "reasons": result["reasons"],
+                    "normalized_text": result["normalized_text"],
+                    "regional_auto_fixes": result["regional_auto_fixes"],
+                    "regional_flagged_variants": result["regional_flagged_variants"],
+                }
+            )
+        report["chunks"].append(chunk_entry)
     return report
 
 
