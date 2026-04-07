@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -36,6 +37,15 @@ class OutputFormatSelectionTests(unittest.TestCase):
         formats = merge_and_build.resolve_output_formats(config, "epub,pdf,docx")
 
         self.assertEqual(formats, [".epub", ".pdf", ".docx"])
+
+
+class LanguageConfigTests(unittest.TestCase):
+    def test_returns_traditional_chinese_language_config(self):
+        config = merge_and_build.get_lang_config("zh-TW")
+
+        self.assertEqual(config["lang_attr"], "zh-Hant")
+        self.assertEqual(config["toc_label"], "目錄")
+        self.assertEqual(config["pdf_font"], "PMingLiU")
 
 
 class GenerateFormatTests(unittest.TestCase):
@@ -199,6 +209,90 @@ class AutoCoverSelectionTests(unittest.TestCase):
 
             extract_cover_mock.assert_called_once()
             self.assertEqual(generate_formats_mock.call_args.kwargs["cover"], os.path.join(temp_dir, "cover.jpg"))
+
+    def test_infer_cover_from_chunks_uses_first_local_image_reference(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            cover = temp_path / "images" / "cover.jpg"
+            cover.parent.mkdir(parents=True, exist_ok=True)
+            cover.write_text("image", encoding="utf-8")
+            (temp_path / "output_chunk0001.md").write_text(
+                "![Cover](images/cover.jpg)\n\nBody",
+                encoding="utf-8",
+            )
+
+            inferred = merge_and_build.infer_cover_from_chunks(temp_dir)
+
+            self.assertEqual(inferred, str(cover))
+
+    def test_infer_cover_from_chunks_ignores_remote_image_references(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            cover = temp_path / "images" / "cover.jpg"
+            cover.parent.mkdir(parents=True, exist_ok=True)
+            cover.write_text("image", encoding="utf-8")
+            (temp_path / "output_chunk0001.md").write_text(
+                "![Remote](https://example.com/cover.jpg)",
+                encoding="utf-8",
+            )
+            (temp_path / "chunk0001.md").write_text(
+                "![Local](images/cover.jpg)",
+                encoding="utf-8",
+            )
+
+            inferred = merge_and_build.infer_cover_from_chunks(temp_dir)
+
+            self.assertEqual(inferred, str(cover))
+
+
+class EpubDeclaredCoverTests(unittest.TestCase):
+    def _write_epub(self, epub_path, opf_content):
+        with zipfile.ZipFile(epub_path, "w") as zf:
+            zf.writestr(
+                "META-INF/container.xml",
+                """<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+""",
+            )
+            zf.writestr("OPS/content.opf", opf_content)
+
+    def test_detects_cover_image_property_in_epub_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            epub_path = os.path.join(temp_dir, "book.epub")
+            self._write_epub(
+                epub_path,
+                """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata />
+  <manifest>
+    <item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image" />
+  </manifest>
+</package>
+""",
+            )
+
+            self.assertTrue(merge_and_build.epub_has_declared_cover(epub_path))
+
+    def test_returns_false_when_epub_has_no_cover_declaration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            epub_path = os.path.join(temp_dir, "book.epub")
+            self._write_epub(
+                epub_path,
+                """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata />
+  <manifest>
+    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml" />
+  </manifest>
+</package>
+""",
+            )
+
+            self.assertFalse(merge_and_build.epub_has_declared_cover(epub_path))
 
 
 class MainFormatSelectionTests(unittest.TestCase):

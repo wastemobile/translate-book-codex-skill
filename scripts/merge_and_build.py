@@ -47,6 +47,13 @@ LANG_CONFIG = {
         'toc_label': '目录',
         'pdf_font': 'FangSong',
     },
+    'zh-TW': {
+        'lang_attr': 'zh-Hant',
+        'font_family': "'PMingLiU', 'MingLiU', 'Songti TC', 'Noto Serif TC', serif",
+        'font_family_ebook': '"PMingLiU", "MingLiU", "Songti TC", "Noto Serif TC", serif',
+        'toc_label': '目錄',
+        'pdf_font': 'PMingLiU',
+    },
     'en': {
         'lang_attr': 'en',
         'font_family': "Georgia, 'Times New Roman', Times, serif",
@@ -223,6 +230,82 @@ def extract_cover_from_epub(epub_path, output_dir):
             return output_path
     except (OSError, zipfile.BadZipFile, ET.ParseError, KeyError):
         return None
+
+
+def infer_cover_from_chunks(temp_dir, max_chunks=12):
+    """Infer a cover image from early markdown chunks for non-EPUB sources.
+
+    For PDF/DOCX inputs we do not have an original EPUB manifest to consult, so
+    use the first image referenced in the early front-matter chunks as a
+    conservative default. This keeps the behavior resumable and avoids scanning
+    the entire book for arbitrary inline illustrations.
+    """
+    candidates = []
+    output_chunks = sorted(
+        glob.glob(os.path.join(temp_dir, "output_chunk*.md")), key=natural_sort_key
+    )
+    source_chunks = sorted(
+        glob.glob(os.path.join(temp_dir, "chunk*.md")), key=natural_sort_key
+    )
+
+    candidates.extend(output_chunks[:max_chunks])
+    candidates.extend(path for path in source_chunks[:max_chunks] if path not in candidates)
+
+    image_pattern = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
+    for chunk_path in candidates:
+        try:
+            with open(chunk_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            continue
+
+        for match in image_pattern.finditer(content):
+            image_ref = match.group(1).strip()
+            if not image_ref or image_ref.startswith(("http://", "https://", "data:")):
+                continue
+
+            image_path = os.path.normpath(os.path.join(temp_dir, image_ref))
+            if os.path.isfile(image_path):
+                return image_path
+
+    return None
+
+
+def epub_has_declared_cover(epub_path):
+    """Return True if an EPUB already declares a cover image in OPF metadata."""
+    try:
+        with zipfile.ZipFile(epub_path, "r") as zf:
+            container_xml = zf.read("META-INF/container.xml")
+            container_root = ET.fromstring(container_xml)
+            container_ns = {"c": "urn:oasis:names:tc:opendocument:xmlns:container"}
+            opf_ns = {"opf": "http://www.idpf.org/2007/opf"}
+
+            rootfile = container_root.find(".//c:rootfile", container_ns)
+            if rootfile is None:
+                return False
+
+            opf_path = rootfile.attrib.get("full-path")
+            if not opf_path:
+                return False
+
+            opf_root = ET.fromstring(zf.read(opf_path))
+            manifest = opf_root.find("opf:manifest", opf_ns)
+            metadata = opf_root.find("opf:metadata", opf_ns)
+
+            if manifest is not None:
+                for item in manifest.findall("opf:item", opf_ns):
+                    properties = item.attrib.get("properties", "")
+                    if "cover-image" in properties.split():
+                        return True
+
+            if metadata is not None:
+                for meta in metadata.findall("opf:meta", opf_ns):
+                    if meta.attrib.get("name") == "cover":
+                        return True
+    except (OSError, zipfile.BadZipFile, ET.ParseError, KeyError):
+        return False
+
+    return False
 
 
 # =============================================================================
@@ -817,7 +900,11 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr, cover=None):
         if cover and os.path.isfile(cover):
             cover_newer = os.path.getmtime(cover) > output_mtime
 
-        if not html_newer and not images_newer and not cover_newer:
+        missing_epub_cover = False
+        if cover and output_ext == ".epub":
+            missing_epub_cover = not epub_has_declared_cover(output_file)
+
+        if not html_newer and not images_newer and not cover_newer and not missing_epub_cover:
             file_size = os.path.getsize(output_file)
             print(f"Skipping {output_ext} - already exists and up to date ({file_size:,} bytes)")
             return output_file
@@ -829,6 +916,8 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr, cover=None):
                 reasons.append("image assets changed")
             if cover_newer:
                 reasons.append("cover image changed")
+            if missing_epub_cover:
+                reasons.append("existing EPUB missing declared cover")
             print(f"Rebuilding {output_ext} - {', '.join(reasons)}")
 
     publish_script = os.path.join(SCRIPT_DIR, "calibre_html_publish.py")
@@ -938,6 +1027,8 @@ def main():
             cover = extract_cover_from_epub(
                 input_file, os.path.join(temp_dir, "cover_extract")
             )
+        else:
+            cover = infer_cover_from_chunks(temp_dir)
 
     print(f"=== Merge and Build ===")
     print(f"Temp directory: {temp_dir}")
