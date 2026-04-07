@@ -80,6 +80,13 @@ def normalize_term(text):
     return normalized.strip()
 
 
+def derive_dataset_name(path):
+    stem = Path(path).stem.strip()
+    stem = re.sub(r"_[A-Za-z0-9]+$", "", stem)
+    stem = re.sub(r"壓縮檔$", "", stem)
+    return stem.strip()
+
+
 def download_file(url, destination):
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -208,6 +215,7 @@ def import_ods_to_sqlite(
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         _ensure_schema(conn)
+        before = conn.total_changes
         for row in rows:
             normalized_source = normalize_term(row["source_term"])
             row_hash = "|".join(
@@ -247,6 +255,44 @@ def import_ods_to_sqlite(
                     row_hash,
                 ),
             )
+        inserted = conn.total_changes - before
+    return {
+        "dataset": dataset,
+        "domain": domain,
+        "rows_seen": len(rows),
+        "rows_inserted": inserted,
+        "ods_path": str(ods_path),
+    }
+
+
+def import_zip_dir_to_sqlite(
+    zip_dir,
+    db_path,
+    extract_dir=None,
+    source_lang="en",
+    target_lang="zh-TW",
+):
+    zip_dir = Path(zip_dir)
+    db_path = Path(db_path)
+    extract_dir = Path(extract_dir) if extract_dir else db_path.parent / "ods-cache"
+    extract_dir.mkdir(parents=True, exist_ok=True)
+
+    results = []
+    for zip_path in sorted(zip_dir.glob("*.zip")):
+        dataset = derive_dataset_name(zip_path)
+        domain = dataset
+        ods_path = extract_first_ods(zip_path, extract_dir / dataset)
+        result = import_ods_to_sqlite(
+            ods_path,
+            db_path,
+            dataset=dataset,
+            domain=domain,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+        result["zip_path"] = str(zip_path)
+        results.append(result)
+    return results
 
 
 def _build_filter_clause(column, values):
@@ -456,7 +502,7 @@ def _cmd_download(args):
 
 
 def _cmd_import(args):
-    import_ods_to_sqlite(
+    result = import_ods_to_sqlite(
         args.ods,
         args.db,
         dataset=args.dataset,
@@ -464,7 +510,32 @@ def _cmd_import(args):
         source_lang=args.source_lang,
         target_lang=args.target_lang,
     )
-    print(json.dumps({"db": str(args.db), "dataset": args.dataset, "domain": args.domain}, ensure_ascii=False))
+    result["db"] = str(args.db)
+    print(json.dumps(result, ensure_ascii=False))
+
+
+def _cmd_import_dir(args):
+    results = import_zip_dir_to_sqlite(
+        args.zip_dir,
+        args.db,
+        extract_dir=args.extract_dir,
+        source_lang=args.source_lang,
+        target_lang=args.target_lang,
+    )
+    print(
+        json.dumps(
+            {
+                "db": str(args.db),
+                "zip_dir": str(args.zip_dir),
+                "datasets": len(results),
+                "rows_seen": sum(item["rows_seen"] for item in results),
+                "rows_inserted": sum(item["rows_inserted"] for item in results),
+                "results": results,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 def _cmd_query(args):
@@ -511,6 +582,14 @@ def main():
     import_parser.add_argument("--source-lang", default="en")
     import_parser.add_argument("--target-lang", default="zh-TW")
     import_parser.set_defaults(func=_cmd_import)
+
+    import_dir_parser = subparsers.add_parser("import-dir")
+    import_dir_parser.add_argument("--zip-dir", required=True)
+    import_dir_parser.add_argument("--db", required=True)
+    import_dir_parser.add_argument("--extract-dir")
+    import_dir_parser.add_argument("--source-lang", default="en")
+    import_dir_parser.add_argument("--target-lang", default="zh-TW")
+    import_dir_parser.set_defaults(func=_cmd_import_dir)
 
     query_parser = subparsers.add_parser("query")
     query_parser.add_argument("--db", required=True)

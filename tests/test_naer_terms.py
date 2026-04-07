@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -45,6 +46,16 @@ ODS_CONTENT = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class OdsHelpersTests(unittest.TestCase):
+    def test_derive_dataset_name_strips_suffixes(self):
+        self.assertEqual(
+            naer_terms.derive_dataset_name("外國地名譯名壓縮檔_VrsZ2AD.zip"),
+            "外國地名譯名",
+        )
+        self.assertEqual(
+            naer_terms.derive_dataset_name("圖書館學與資訊科學名詞壓縮檔.zip"),
+            "圖書館學與資訊科學名詞",
+        )
+
     def test_extracts_first_ods_from_zip_archive(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -84,7 +95,7 @@ class ImportAndQueryTests(unittest.TestCase):
             temp_path = Path(temp_dir)
             ods_path = self._create_sample_ods(temp_path)
             db_path = temp_path / "terms.sqlite3"
-            naer_terms.import_ods_to_sqlite(
+            result = naer_terms.import_ods_to_sqlite(
                 ods_path,
                 db_path,
                 dataset="電子計算機名詞",
@@ -102,10 +113,45 @@ class ImportAndQueryTests(unittest.TestCase):
                 ["floating-point", "compiler"],
             )
             self.assertEqual(hits[0]["target_term"], "浮點")
+            self.assertEqual(result["rows_seen"], 2)
+            self.assertEqual(result["rows_inserted"], 2)
 
             with sqlite3.connect(db_path) as conn:
                 count = conn.execute("SELECT COUNT(*) FROM terms").fetchone()[0]
             self.assertEqual(count, 2)
+
+    def test_import_zip_dir_to_sqlite_imports_multiple_archives(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            zip_dir = temp_path / "zips"
+            zip_dir.mkdir()
+            for name in [
+                "圖書館學與資訊科學名詞壓縮檔.zip",
+                "外國地名譯名壓縮檔_VrsZ2AD.zip",
+            ]:
+                with zipfile.ZipFile(zip_dir / name, "w") as archive:
+                    archive.writestr("sample.ods", b"fake-ods")
+                    archive.writestr("content.xml", ODS_CONTENT)
+            db_path = temp_path / "terms.sqlite3"
+
+            with mock.patch.object(naer_terms, "extract_first_ods") as extract_mock:
+                with mock.patch.object(
+                    naer_terms,
+                    "import_ods_to_sqlite",
+                    side_effect=[
+                        {"dataset": "圖書館學與資訊科學名詞", "domain": "圖書館學與資訊科學名詞", "rows_seen": 2, "rows_inserted": 2, "ods_path": "a.ods"},
+                        {"dataset": "外國地名譯名", "domain": "外國地名譯名", "rows_seen": 2, "rows_inserted": 2, "ods_path": "b.ods"},
+                    ],
+                ) as import_mock:
+                    extract_mock.side_effect = [
+                        temp_path / "a.ods",
+                        temp_path / "b.ods",
+                    ]
+                    results = naer_terms.import_zip_dir_to_sqlite(zip_dir, db_path)
+
+            self.assertEqual([item["dataset"] for item in results], ["圖書館學與資訊科學名詞", "外國地名譯名"])
+            self.assertEqual(import_mock.call_args_list[0].kwargs["dataset"], "圖書館學與資訊科學名詞")
+            self.assertEqual(import_mock.call_args_list[1].kwargs["dataset"], "外國地名譯名")
 
     def test_render_glossary_block_only_lists_hits(self):
         hits = [
