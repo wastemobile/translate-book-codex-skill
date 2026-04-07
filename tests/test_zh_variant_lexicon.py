@@ -12,6 +12,12 @@ import zh_variant_lexicon  # noqa: E402
 
 
 class OpenCCWrapperTests(unittest.TestCase):
+    def test_default_config_targets_simplified_to_taiwan_conversion(self):
+        self.assertEqual(
+            zh_variant_lexicon.DEFAULT_OPENCC_CONFIG,
+            "s2twp",
+        )
+
     def test_build_converter_uses_config_name(self):
         with mock.patch.object(zh_variant_lexicon, "opencc", create=True) as opencc_mock:
             opencc_mock.OpenCC.return_value = mock.Mock()
@@ -20,6 +26,19 @@ class OpenCCWrapperTests(unittest.TestCase):
 
         opencc_mock.OpenCC.assert_called_once_with("s2twp")
         self.assertIsNotNone(converter)
+
+    def test_generate_opencc_candidate_uses_default_config_when_not_provided(self):
+        with mock.patch.object(zh_variant_lexicon, "opencc", create=True) as opencc_mock:
+            converter = mock.Mock()
+            converter.convert.return_value = "人工智慧系統依賴網路。"
+            opencc_mock.OpenCC.return_value = converter
+
+            candidate = zh_variant_lexicon.generate_opencc_candidate(
+                "人工智能系統依賴网络。",
+            )
+
+        opencc_mock.OpenCC.assert_called_once_with("s2twp")
+        self.assertEqual(candidate, "人工智慧系統依賴網路。")
 
     def test_generate_opencc_candidate_converts_text(self):
         with mock.patch.object(zh_variant_lexicon, "opencc", create=True) as opencc_mock:
@@ -53,7 +72,6 @@ class OpenCCWrapperTests(unittest.TestCase):
 
             result = zh_variant_lexicon.normalize_with_opencc(
                 "人工智能系統依賴网络。",
-                config="t2tw",
             )
 
         self.assertEqual(
@@ -61,7 +79,7 @@ class OpenCCWrapperTests(unittest.TestCase):
             {
                 "original_text": "人工智能系統依賴网络。",
                 "candidate_text": "人工智慧系統依賴網路。",
-                "config": "t2tw",
+                "config": "s2twp",
                 "opencc_available": True,
                 "changed": True,
             },

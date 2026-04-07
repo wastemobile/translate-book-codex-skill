@@ -7,7 +7,9 @@ except ImportError:  # pragma: no cover - exercised when the dependency is absen
     opencc = None
 
 
-DEFAULT_OPENCC_CONFIG = "t2tw"
+# Use the simplified-to-Taiwan configuration because the input we normalize is
+# usually Mainland-flavored translation output, not already-traditional text.
+DEFAULT_OPENCC_CONFIG = "s2twp"
 
 
 def build_converter(config=DEFAULT_OPENCC_CONFIG):
@@ -32,4 +34,3 @@ def normalize_with_opencc(text, config=DEFAULT_OPENCC_CONFIG):
         "opencc_available": opencc is not None,
         "changed": candidate_text != text,
     }
-
