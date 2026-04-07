@@ -288,6 +288,43 @@ class PromotionTests(unittest.TestCase):
             self.assertEqual(report["chunks"][0]["normalized_text"], "人工智慧系統依賴網路。")
             self.assertTrue(report["chunks"][0]["promoted"])
 
+    def test_regional_lexicon_does_not_fail_when_normalization_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            source = temp_path / "chunk0001.md"
+            refined = temp_path / "refined_chunk0001.md"
+            source.write_text("人工智能系统依赖网络。", encoding="utf-8")
+            refined.write_text("人工智能系统依赖网络。", encoding="utf-8")
+
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "original_text": "人工智能系统依赖网络。",
+                    "candidate_text": "人工智能系统依赖网络。",
+                    "config": "s2twp",
+                    "opencc_available": False,
+                    "changed": False,
+                    "variant_changes": [],
+                    "regional_auto_fixes": [],
+                    "regional_flagged_variants": [],
+                    "normalized_text": "人工智能系统依赖网络。",
+                },
+            ):
+                result = chunk_audit.audit_chunk(
+                    str(source),
+                    str(refined),
+                    regional_lexicon_config="s2twp",
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["normalized_text"], "人工智能系统依赖网络。")
+            self.assertEqual(result["regional_auto_fixes"], [])
+            self.assertEqual(result["regional_flagged_variants"], [])
+            self.assertEqual(result["reasons"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

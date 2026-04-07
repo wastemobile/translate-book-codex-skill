@@ -121,6 +121,36 @@ Current recommendation:
 - glossary mismatch audit is usable
 - glossary repair should still be treated as experimental until more real-book validation is completed
 
+## Regional Lexicon Audit
+
+This repository also includes an audit-stage regional lexicon normalization pass for `zh-CN` style wording in translated Chinese output.
+
+What it does:
+
+- uses OpenCC as the base lexicon source
+- compares the translated chunk against an OpenCC-generated Taiwan-oriented candidate
+- auto-applies only high-confidence localized replacements
+- records low-confidence regional variants in the audit report
+- keeps the behavior separate from full-text simplified-to-traditional conversion
+
+What it does not do:
+
+- it is not a Calibre plugin
+- it is not a whole-text script conversion step
+- it is not part of the Stage 2 or Stage 3 translation prompts
+
+Example:
+
+```bash
+python3 scripts/chunk_audit.py \
+  --temp-dir ./book_temp \
+  --regional-lexicon-config s2twp \
+  --regional-lexicon-auto-fix \
+  --regional-lexicon-report
+```
+
+If OpenCC is not installed, the regional lexicon pass degrades gracefully and leaves the chunk unchanged while still returning a structured audit report.
+
 Translation-stage integration:
 
 ```bash

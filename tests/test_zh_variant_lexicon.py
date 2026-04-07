@@ -64,6 +64,28 @@ class OpenCCWrapperTests(unittest.TestCase):
 
         self.assertEqual(candidate, "人工智能系統依賴网络。")
 
+    def test_normalize_with_opencc_returns_identity_when_opencc_unavailable(self):
+        with mock.patch.object(zh_variant_lexicon, "opencc", None, create=True):
+            result = zh_variant_lexicon.normalize_with_opencc(
+                "人工智能系統依賴网络。",
+                config="s2twp",
+            )
+
+        self.assertEqual(
+            result,
+            {
+                "original_text": "人工智能系統依賴网络。",
+                "candidate_text": "人工智能系統依賴网络。",
+                "config": "s2twp",
+                "opencc_available": False,
+                "changed": False,
+                "variant_changes": [],
+                "regional_auto_fixes": [],
+                "regional_flagged_variants": [],
+                "normalized_text": "人工智能系統依賴网络。",
+            },
+        )
+
     def test_normalize_with_opencc_returns_structured_result_shell(self):
         with mock.patch.object(zh_variant_lexicon, "opencc", create=True) as opencc_mock:
             converter = mock.Mock()
