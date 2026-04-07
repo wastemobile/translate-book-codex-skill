@@ -146,13 +146,13 @@ class RegionalLexiconDiffTests(unittest.TestCase):
 
         self.assertEqual(
             [item["source_text"] for item in result],
-            ["音乐", "支持在线音乐"],
+            ["支持在线", "音乐"],
         )
         self.assertEqual(
             [item["replacement_text"] for item in result],
-            ["音樂", "支援線上音樂"],
+            ["支援線上", "音樂"],
         )
-        self.assertEqual([item["confidence"] for item in result], ["high", "low"])
+        self.assertEqual([item["confidence"] for item in result], ["low", "high"])
 
     def test_extract_variant_changes_ignores_about_network_rewrite(self):
         result = zh_variant_lexicon.extract_variant_changes("关于网络", "關於網路")
@@ -201,10 +201,16 @@ class RegionalLexiconDiffTests(unittest.TestCase):
             "該軟體可用於雲端運算",
         )
 
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["confidence"], "low")
-        self.assertEqual(result[0]["source_text"], "该软件可用于云计算")
-        self.assertEqual(result[0]["replacement_text"], "該軟體可用於雲端運算")
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(item["confidence"] == "low" for item in result))
+        self.assertEqual(
+            [item["source_text"] for item in result],
+            ["该软件", "可用于云计算"],
+        )
+        self.assertEqual(
+            [item["replacement_text"] for item in result],
+            ["該軟體", "可用於雲端運算"],
+        )
 
     def test_extract_variant_changes_ignores_broad_domain_rewrite(self):
         result = zh_variant_lexicon.extract_variant_changes(

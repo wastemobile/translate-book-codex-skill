@@ -219,20 +219,50 @@ def _refine_single_character_change(original_text, candidate_text, opcodes, inde
     }
 
 
-def _build_broad_low_confidence_change(original_text, candidate_text):
+def _build_local_low_confidence_change(original_text, candidate_text, opcodes, index, i1, i2, j1, j2):
+    start = i1
+    end = i2
+    candidate_start = j1
+    candidate_end = j2
+
+    previous_opcode = opcodes[index - 1] if index > 0 else None
+    next_opcode = opcodes[index + 1] if index + 1 < len(opcodes) else None
+    next_next_opcode = opcodes[index + 2] if index + 2 < len(opcodes) else None
+
+    if previous_opcode is not None and previous_opcode[0] == "equal":
+        previous_source = original_text[previous_opcode[1] : previous_opcode[2]]
+        previous_candidate = candidate_text[previous_opcode[3] : previous_opcode[4]]
+        if previous_source and previous_candidate and _is_cjk_character(previous_source[-1]) and _is_cjk_character(previous_candidate[-1]):
+            start = previous_opcode[1]
+            candidate_start = previous_opcode[3]
+
+    if next_opcode is not None and next_opcode[0] == "equal" and (
+        next_next_opcode is None or next_next_opcode[0] == "equal"
+    ):
+        next_source = original_text[next_opcode[1] : next_opcode[2]]
+        next_candidate = candidate_text[next_opcode[3] : next_opcode[4]]
+        if next_source and next_candidate:
+            right_extension = _right_phrase_extension(next_source)
+            if right_extension:
+                end = next_opcode[1] + len(right_extension)
+                candidate_end = next_opcode[3] + len(right_extension)
+
+    source_text = original_text[start:end]
+    replacement_text = candidate_text[candidate_start:candidate_end]
     return {
-        "source_text": original_text,
-        "replacement_text": candidate_text,
+        "source_text": source_text,
+        "replacement_text": replacement_text,
         "confidence": "low",
-        "start": 0,
-        "end": len(original_text),
+        "start": start,
+        "end": end,
+        "candidate_start": candidate_start,
+        "candidate_end": candidate_end,
     }
 
 
 def extract_variant_changes(original_text, candidate_text):
     matcher = difflib.SequenceMatcher(None, original_text, candidate_text)
     changes = []
-    needs_broad_low_change = False
     opcodes = matcher.get_opcodes()
     for index, (tag, i1, i2, j1, j2) in enumerate(opcodes):
         if tag == "equal":
@@ -274,10 +304,18 @@ def extract_variant_changes(original_text, candidate_text):
                 }
             )
         elif source_text != replacement_text:
-            needs_broad_low_change = True
-
-    if needs_broad_low_change and original_text != candidate_text:
-        changes.append(_build_broad_low_confidence_change(original_text, candidate_text))
+            changes.append(
+                _build_local_low_confidence_change(
+                    original_text,
+                    candidate_text,
+                    opcodes,
+                    index,
+                    i1,
+                    i2,
+                    j1,
+                    j2,
+                )
+            )
     return changes
 
 
