@@ -31,6 +31,37 @@ class DiscoverPendingRefinementsTests(unittest.TestCase):
 
 
 class RefinePipelineTests(unittest.TestCase):
+    def test_build_repair_prompt_targets_only_mismatched_terms(self):
+        prompt = ollama_stage_refine.build_repair_prompt(
+            "A compiler handles arithmetic. The assembly line is next.",
+            "編譯程式處理算術。",
+            {"source_term": "compiler", "expected_target": "編譯器"},
+            "Traditional Chinese",
+        )
+
+        self.assertIn("Fix only the terminology mismatches", prompt)
+        self.assertIn("compiler -> 編譯器", prompt)
+        self.assertIn("RELEVANT SOURCE EXCERPTS:", prompt)
+        self.assertIn("A compiler handles arithmetic.", prompt)
+        self.assertIn("CURRENT TRANSLATION:", prompt)
+        self.assertIn("Do not add explanations", prompt)
+
+    def test_sanitize_repair_output_strips_preface_before_translation_anchor(self):
+        current = "# 標題\n\n編譯程式處理算術。"
+        candidate = "以下為修正版：\n\n# 標題\n\n編譯器處理算術。"
+
+        cleaned = ollama_stage_refine.sanitize_repair_output(candidate, current)
+
+        self.assertEqual(cleaned, "# 標題\n\n編譯器處理算術。")
+
+    def test_sanitize_repair_output_does_not_trim_to_later_paragraph_anchor(self):
+        current = "# 標題\n\n第一段。\n\n第二段。"
+        candidate = "第二段。\n\n補充說明。"
+
+        cleaned = ollama_stage_refine.sanitize_repair_output(candidate, current)
+
+        self.assertEqual(cleaned, "第二段。\n\n補充說明。")
+
     def test_build_prompt_includes_glossary_block_when_present(self):
         prompt = ollama_stage_refine.build_prompt(
             "A compiler handles arithmetic.",
@@ -84,11 +115,184 @@ class RefinePipelineTests(unittest.TestCase):
             "A compiler is here.",
             dataset="電子計算機名詞",
             domain="computer-science",
+            high_confidence_only=True,
         )
         self.assertIn(
             "Terminology references for this chunk:",
             generate_mock.call_args.args[0],
         )
+
+    def test_repair_refinement_uses_mismatch_report_when_present(self):
+        with mock.patch.object(
+            ollama_stage_refine,
+            "check_term_mismatches",
+            side_effect=[
+                {
+                    "matched_terms": 1,
+                    "mismatches": 1,
+                    "issues": [{"source_term": "compiler", "expected_target": "編譯器"}],
+                },
+                {
+                    "matched_terms": 1,
+                    "mismatches": 0,
+                    "issues": [],
+                },
+            ],
+        ) as mismatch_mock, mock.patch.object(
+            ollama_stage_refine,
+            "generate_text",
+            return_value="編譯器處理算術。",
+        ) as generate_mock:
+            result = ollama_stage_refine.repair_terminology_mismatches(
+                "A compiler handles arithmetic.",
+                "編譯程式處理算術。",
+                target_lang="Traditional Chinese",
+                glossary_db="terms.sqlite3",
+                glossary_dataset="電子計算機名詞",
+                glossary_domain="computer-science",
+            )
+
+        self.assertEqual(result, "編譯器處理算術。")
+        self.assertEqual(mismatch_mock.call_count, 2)
+        self.assertEqual(
+            mismatch_mock.call_args_list[0],
+            mock.call(
+                "terms.sqlite3",
+                source_text="A compiler handles arithmetic.",
+                translated_text="編譯程式處理算術。",
+                dataset="電子計算機名詞",
+                domain="computer-science",
+                high_confidence_only=True,
+            ),
+        )
+        self.assertIn("compiler -> 編譯器", generate_mock.call_args.args[0])
+
+    def test_repair_refinement_processes_issues_one_by_one(self):
+        with mock.patch.object(
+            ollama_stage_refine,
+            "check_term_mismatches",
+            side_effect=[
+                {
+                    "matched_terms": 2,
+                    "mismatches": 2,
+                    "issues": [
+                        {"source_term": "compiler", "expected_target": "編譯器"},
+                        {"source_term": "assembly line", "expected_target": "裝配線"},
+                    ],
+                },
+                {
+                    "matched_terms": 2,
+                    "mismatches": 1,
+                    "issues": [{"source_term": "assembly line", "expected_target": "裝配線"}],
+                },
+                {
+                    "matched_terms": 2,
+                    "mismatches": 0,
+                    "issues": [],
+                },
+            ],
+        ), mock.patch.object(
+            ollama_stage_refine,
+            "generate_text",
+            side_effect=["編譯器處理算術。裝配線在後面。", "編譯器處理算術。裝配線在後面。"],
+        ) as generate_mock:
+            result = ollama_stage_refine.repair_terminology_mismatches(
+                "A compiler handles arithmetic. The assembly line is next.",
+                "編譯程式處理算術。組裝線在後面。",
+                glossary_db="terms.sqlite3",
+                glossary_dataset="電子計算機名詞",
+            )
+
+        self.assertEqual(result, "編譯器處理算術。裝配線在後面。")
+        self.assertEqual(generate_mock.call_count, 2)
+
+    def test_repair_refinement_rejects_candidate_when_mismatches_do_not_improve(self):
+        with mock.patch.object(
+            ollama_stage_refine,
+            "check_term_mismatches",
+            side_effect=[
+                {
+                    "matched_terms": 1,
+                    "mismatches": 1,
+                    "issues": [{"source_term": "compiler", "expected_target": "編譯器"}],
+                },
+                {
+                    "matched_terms": 1,
+                    "mismatches": 1,
+                    "issues": [{"source_term": "compiler", "expected_target": "編譯器"}],
+                },
+            ],
+        ), mock.patch.object(
+            ollama_stage_refine,
+            "generate_text",
+            return_value="前言\n\n# 標題\n\n編譯程式處理算術。",
+        ):
+            result = ollama_stage_refine.repair_terminology_mismatches(
+                "A compiler handles arithmetic.",
+                "# 標題\n\n編譯程式處理算術。",
+                glossary_db="terms.sqlite3",
+                glossary_dataset="電子計算機名詞",
+            )
+
+        self.assertEqual(result, "# 標題\n\n編譯程式處理算術。")
+
+    def test_repair_refinement_skips_model_call_when_no_mismatch(self):
+        with mock.patch.object(
+            ollama_stage_refine,
+            "check_term_mismatches",
+            return_value={"matched_terms": 1, "mismatches": 0, "issues": []},
+        ), mock.patch.object(
+            ollama_stage_refine,
+            "generate_text",
+        ) as generate_mock:
+            result = ollama_stage_refine.repair_terminology_mismatches(
+                "A compiler handles arithmetic.",
+                "編譯器處理算術。",
+                glossary_db="terms.sqlite3",
+            )
+
+        self.assertEqual(result, "編譯器處理算術。")
+        generate_mock.assert_not_called()
+
+    def test_refine_one_runs_repair_after_refinement_when_enabled(self):
+        item = {"source": "source.md", "draft": "draft.md", "refined": "refined.md"}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            item = {
+                "source": str(temp_path / "chunk0001.md"),
+                "draft": str(temp_path / "draft_chunk0001.md"),
+                "refined": str(temp_path / "refined_chunk0001.md"),
+            }
+            Path(item["source"]).write_text("A compiler handles arithmetic.", encoding="utf-8")
+            Path(item["draft"]).write_text("編譯程式處理算術。", encoding="utf-8")
+
+            with mock.patch.object(
+                ollama_stage_refine,
+                "generate_refinement",
+                return_value="編譯程式處理算術。",
+            ) as refine_mock, mock.patch.object(
+                ollama_stage_refine,
+                "repair_terminology_mismatches",
+                return_value="編譯器處理算術。",
+            ) as repair_mock:
+                ok, output = ollama_stage_refine.refine_one(
+                    item,
+                    "Traditional Chinese",
+                    ollama_stage_refine.DEFAULT_MODEL,
+                    "omlx",
+                    "http://127.0.0.1:8000/v1",
+                    None,
+                    1,
+                    glossary_db="terms.sqlite3",
+                    glossary_dataset="電子計算機名詞",
+                    repair_glossary_mismatches=True,
+                )
+
+            self.assertTrue(ok)
+            self.assertEqual(output, item["refined"])
+            refine_mock.assert_called_once()
+            repair_mock.assert_called_once()
+            self.assertEqual(Path(item["refined"]).read_text(encoding="utf-8"), "編譯器處理算術。")
 
     def test_generate_refinement_auto_selects_datasets_when_enabled(self):
         with mock.patch.object(
@@ -123,6 +327,7 @@ class RefinePipelineTests(unittest.TestCase):
             "A compiler is here.",
             dataset=["電子計算機名詞"],
             domain=None,
+            high_confidence_only=True,
         )
 
     def test_process_temp_dir_writes_refined_outputs(self):

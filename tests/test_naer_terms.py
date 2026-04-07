@@ -119,6 +119,51 @@ class ImportAndQueryTests(unittest.TestCase):
         self.assertIn("- floating-point -> 浮點", block)
         self.assertIn("- compiler -> 編譯器", block)
 
+    def test_render_glossary_block_high_confidence_filters_generic_single_words(self):
+        hits = [
+            {"source_term": "augmentation system", "target_term": "擴增系統", "normalized_source": "augmentation system", "dataset": "電子計算機名詞", "domain": "computer-science", "priority": 100, "note": ""},
+            {"source_term": "Approach", "target_term": "Approach資料庫軟體", "normalized_source": "approach", "dataset": "電子計算機名詞", "domain": "computer-science", "priority": 100, "note": ""},
+            {"source_term": "assistant", "target_term": "助理", "normalized_source": "assistant", "dataset": "電子計算機名詞", "domain": "computer-science", "priority": 100, "note": ""},
+        ]
+
+        block = naer_terms.render_glossary_block(hits, high_confidence_only=True)
+
+        self.assertIn("augmentation system", block)
+        self.assertIn("Approach", block)
+        self.assertNotIn("assistant", block)
+
+    def test_find_glossary_hits_can_return_only_high_confidence_terms(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "terms.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                naer_terms._ensure_schema(conn)
+                conn.executemany(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        ("augmentation system", "擴增系統", "augmentation system", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "augmentation-system"),
+                        ("Approach", "Approach資料庫軟體", "approach", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "approach-product"),
+                        ("assistant", "助理", "assistant", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "a.ods", "assistant-generic"),
+                    ],
+                )
+
+            hits = naer_terms.find_glossary_hits(
+                db_path,
+                "The augmentation system used Approach and an assistant.",
+                dataset="電子計算機名詞",
+                high_confidence_only=True,
+            )
+
+            self.assertEqual(
+                [item["source_term"] for item in hits],
+                ["augmentation system", "Approach"],
+            )
+
     def test_detects_term_mismatches_against_translation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -177,6 +222,30 @@ class ImportAndQueryTests(unittest.TestCase):
             hits = naer_terms.find_glossary_hits(
                 db_path,
                 "A compiler handles arithmetic and architecture.",
+                dataset="電子計算機名詞",
+            )
+
+            self.assertEqual(hits, [])
+
+    def test_query_avoids_false_positive_for_mixed_case_hyphenated_term(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "terms.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                naer_terms._ensure_schema(conn)
+                conn.execute(
+                    """
+                    INSERT INTO terms(
+                        source_term, target_term, normalized_source, domain, dataset,
+                        note, source_lang, target_lang, priority, source_file, row_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("A-law", "A 法則", "a law", "computer-science", "電子計算機名詞", "", "en", "zh-TW", 100, "sample.ods", "a-law-row"),
+                )
+
+            hits = naer_terms.find_glossary_hits(
+                db_path,
+                "The company had a law against carrying radios on site.",
                 dataset="電子計算機名詞",
             )
 

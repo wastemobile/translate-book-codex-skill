@@ -35,6 +35,27 @@ LOWERCASE_STOPWORD_TERMS = {
     "the",
     "to",
 }
+GENERIC_SINGLE_WORD_TERMS = {
+    "about",
+    "account",
+    "active",
+    "additional",
+    "alternative",
+    "answer",
+    "apparent",
+    "arrival",
+    "assistant",
+    "attempt",
+    "attendance",
+    "augment",
+    "attach",
+    "area",
+    "annual",
+    "actual",
+    "advanced",
+    "appropriate",
+    "accurately",
+}
 
 
 def _normalize_filter_values(value):
@@ -323,7 +344,18 @@ def _term_matches_source(source_text, normalized_text, term):
     if raw_term.islower() and normalized_source in LOWERCASE_STOPWORD_TERMS:
         return False
 
+    if "-" in raw_term:
+        pieces = [re.escape(piece) for piece in raw_term.split("-") if piece]
+        if not pieces:
+            return False
+        flags = 0 if any(ch.isupper() for ch in raw_term) else re.IGNORECASE
+        pattern = r"[-\s]+".join(pieces)
+        return re.search(rf"(?<!\w){pattern}(?!\w)", source_text, flags) is not None
+
     if raw_term.isupper() and len(raw_term) <= 5:
+        return re.search(rf"(?<!\w){re.escape(raw_term)}(?!\w)", source_text) is not None
+
+    if any(ch.isupper() for ch in raw_term):
         return re.search(rf"(?<!\w){re.escape(raw_term)}(?!\w)", source_text) is not None
 
     if re.search(r"[^A-Za-z0-9\s-]", raw_term):
@@ -333,13 +365,36 @@ def _term_matches_source(source_text, normalized_text, term):
     return needle in normalized_text
 
 
-def find_glossary_hits(db_path, source_text, dataset=None, domain=None, limit=50):
+def is_high_confidence_term(term):
+    source_term = term["source_term"].strip()
+    normalized_source = term["normalized_source"]
+
+    if " " in normalized_source or "-" in source_term:
+        return True
+    if source_term.isupper() and len(source_term) >= 2:
+        return True
+    if re.search(r"[A-Z].*[A-Z]", source_term):
+        return True
+    if any(ch.isdigit() for ch in source_term):
+        return True
+    if re.search(r"[^A-Za-z0-9\s-]", source_term):
+        return True
+    if source_term[:1].isupper() and not source_term.isupper():
+        return True
+    if normalized_source in GENERIC_SINGLE_WORD_TERMS:
+        return False
+    return False
+
+
+def find_glossary_hits(db_path, source_text, dataset=None, domain=None, limit=50, high_confidence_only=False):
     normalized_text = f" {normalize_term(source_text)} "
     with sqlite3.connect(db_path) as conn:
         terms = _fetch_terms(conn, dataset=dataset, domain=domain)
     hits = []
     seen = set()
     for term in terms:
+        if high_confidence_only and not is_high_confidence_term(term):
+            continue
         if _term_matches_source(source_text, normalized_text, term) and term["normalized_source"] not in seen:
             hits.append(term)
             seen.add(term["normalized_source"])
@@ -348,7 +403,9 @@ def find_glossary_hits(db_path, source_text, dataset=None, domain=None, limit=50
     return hits
 
 
-def render_glossary_block(hits):
+def render_glossary_block(hits, high_confidence_only=False):
+    if high_confidence_only:
+        hits = [item for item in hits if is_high_confidence_term(item)]
     if not hits:
         return ""
     lines = ["Terminology references for this chunk:"]
@@ -361,8 +418,21 @@ def render_glossary_block(hits):
     return "\n".join(lines)
 
 
-def check_term_mismatches(db_path, source_text, translated_text, dataset=None, domain=None):
-    hits = find_glossary_hits(db_path, source_text, dataset=dataset, domain=domain)
+def check_term_mismatches(
+    db_path,
+    source_text,
+    translated_text,
+    dataset=None,
+    domain=None,
+    high_confidence_only=False,
+):
+    hits = find_glossary_hits(
+        db_path,
+        source_text,
+        dataset=dataset,
+        domain=domain,
+        high_confidence_only=high_confidence_only,
+    )
     issues = []
     for item in hits:
         if item["target_term"] not in translated_text:

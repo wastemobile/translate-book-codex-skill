@@ -4,6 +4,7 @@
 import argparse
 import glob
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from local_model_client import (
@@ -13,7 +14,7 @@ from local_model_client import (
     read_text,
     write_text,
 )
-from naer_terms import auto_select_datasets, find_glossary_hits, render_glossary_block
+from naer_terms import auto_select_datasets, check_term_mismatches, find_glossary_hits, render_glossary_block
 
 
 DEFAULT_MODEL = "gemma-4-26b-a4b-it-mxfp4"
@@ -31,11 +32,17 @@ def discover_pending_refinements(temp_dir):
     return pending
 
 
-def build_glossary_block(glossary_db, source_text, dataset=None, domain=None):
+def build_glossary_block(glossary_db, source_text, dataset=None, domain=None, high_confidence_only=False):
     if not glossary_db:
         return ""
-    hits = find_glossary_hits(glossary_db, source_text, dataset=dataset, domain=domain)
-    return render_glossary_block(hits)
+    hits = find_glossary_hits(
+        glossary_db,
+        source_text,
+        dataset=dataset,
+        domain=domain,
+        high_confidence_only=high_confidence_only,
+    )
+    return render_glossary_block(hits, high_confidence_only=high_confidence_only)
 
 
 def build_prompt(source_text, draft_text, target_lang, glossary_block=""):
@@ -52,6 +59,61 @@ Output only the refined markdown.
 DRAFT:
 {draft_text}
 """
+
+
+def build_repair_prompt(source_text, current_translation, issues, target_lang):
+    issue = issues if isinstance(issues, dict) else issues[0]
+    source_sentences = extract_relevant_source_excerpts(source_text, issue["source_term"])
+    lines = [
+        f"Fix only the terminology mismatches in this {target_lang} translation.",
+        "Preserve markdown structure, wording, and paragraphing unless a mismatch requires a local edit.",
+        "Do not rewrite the whole chunk. Only replace the mismatched term renderings.",
+        "Return the complete repaired markdown only.",
+        "Do not add explanations, notes, prefaces, or code fences.",
+        "If no local edit is needed, return CURRENT TRANSLATION exactly unchanged.",
+        "",
+        "TERMINOLOGY FIX:",
+    ]
+    lines.append(f"- {issue['source_term']} -> {issue['expected_target']}")
+    lines.extend(
+        [
+            "",
+            "RELEVANT SOURCE EXCERPTS:",
+            source_sentences,
+            "",
+            "CURRENT TRANSLATION:",
+            current_translation,
+        ]
+    )
+    return "\n".join(lines)
+
+
+def extract_relevant_source_excerpts(source_text, source_term):
+    sentences = re.split(r"(?<=[.!?])\s+", source_text.strip())
+    term_pattern = re.compile(re.escape(source_term), re.IGNORECASE)
+    matched = [sentence for sentence in sentences if term_pattern.search(sentence)]
+    if matched:
+        return "\n".join(matched[:2])
+    return source_text[:400]
+
+
+def sanitize_repair_output(candidate, current_translation):
+    cleaned = candidate.strip()
+    if not cleaned:
+        return current_translation
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[^\n]*\n", "", cleaned)
+        cleaned = re.sub(r"\n```$", "", cleaned).strip()
+
+    first_anchor = next(
+        (line.strip() for line in current_translation.splitlines() if line.strip()),
+        "",
+    )
+    if first_anchor:
+        position = cleaned.find(first_anchor)
+        if position > 0:
+            cleaned = cleaned[position:].strip()
+    return cleaned or current_translation
 
 
 def generate_refinement(
@@ -82,6 +144,7 @@ def generate_refinement(
         source_text,
         dataset=glossary_dataset_filter,
         domain=glossary_domain,
+        high_confidence_only=True,
     )
     prompt = build_prompt(
         source_text,
@@ -99,6 +162,65 @@ def generate_refinement(
     )
 
 
+def repair_terminology_mismatches(
+    source_text,
+    refined_text,
+    target_lang="Traditional Chinese",
+    model=DEFAULT_MODEL,
+    provider=DEFAULT_PROVIDER,
+    api_base=DEFAULT_OMLX_API_BASE,
+    api_key=None,
+    glossary_db=None,
+    glossary_dataset=None,
+    glossary_domain=None,
+):
+    if not glossary_db:
+        return refined_text
+    mismatch_report = check_term_mismatches(
+        glossary_db,
+        source_text=source_text,
+        translated_text=refined_text,
+        dataset=glossary_dataset,
+        domain=glossary_domain,
+        high_confidence_only=True,
+    )
+    if not mismatch_report["mismatches"]:
+        return refined_text
+    repaired = refined_text
+    current_report = mismatch_report
+    for issue in mismatch_report["issues"]:
+        prompt = build_repair_prompt(
+            source_text,
+            repaired,
+            issue,
+            target_lang,
+        )
+        candidate = generate_text(
+            prompt,
+            model=model,
+            provider=provider,
+            api_base=api_base,
+            api_key=api_key,
+            temperature=0.0,
+        ).strip()
+        if candidate:
+            candidate = sanitize_repair_output(candidate, repaired)
+            candidate_report = check_term_mismatches(
+                glossary_db,
+                source_text=source_text,
+                translated_text=candidate,
+                dataset=glossary_dataset,
+                domain=glossary_domain,
+                high_confidence_only=True,
+            )
+            if candidate_report["mismatches"] < current_report["mismatches"]:
+                repaired = candidate
+                current_report = candidate_report
+                if not current_report["mismatches"]:
+                    break
+    return repaired
+
+
 def refine_one(
     item,
     target_lang,
@@ -112,6 +234,7 @@ def refine_one(
     glossary_domain=None,
     glossary_auto_select=False,
     glossary_auto_max_datasets=2,
+    repair_glossary_mismatches=False,
 ):
     source_text = read_text(item["source"])
     draft_text = read_text(item["draft"])
@@ -134,6 +257,28 @@ def refine_one(
             ).strip()
             if not refined:
                 raise ValueError("empty refinement")
+            if repair_glossary_mismatches:
+                repair_dataset = glossary_dataset
+                if glossary_db and glossary_auto_select and not glossary_dataset:
+                    repair_dataset = auto_select_datasets(
+                        glossary_db,
+                        source_text,
+                        dataset_candidates=None,
+                        domain=glossary_domain,
+                        max_datasets=glossary_auto_max_datasets,
+                    )
+                refined = repair_terminology_mismatches(
+                    source_text,
+                    refined,
+                    target_lang=target_lang,
+                    model=model,
+                    provider=provider,
+                    api_base=api_base,
+                    api_key=api_key,
+                    glossary_db=glossary_db,
+                    glossary_dataset=repair_dataset,
+                    glossary_domain=glossary_domain,
+                )
             write_text(item["refined"], refined)
             return True, item["refined"]
         except Exception as exc:  # pragma: no cover - exercised by tests through mocking
@@ -159,6 +304,7 @@ def process_temp_dir(
     glossary_domain=None,
     glossary_auto_select=False,
     glossary_auto_max_datasets=2,
+    repair_glossary_mismatches=False,
 ):
     pending = discover_pending_refinements(temp_dir)
     report = {"pending": len(pending), "completed": 0, "failed": 0, "failures": []}
@@ -181,6 +327,7 @@ def process_temp_dir(
                 glossary_domain=glossary_domain,
                 glossary_auto_select=glossary_auto_select,
                 glossary_auto_max_datasets=glossary_auto_max_datasets,
+                repair_glossary_mismatches=repair_glossary_mismatches,
             )
             if ok:
                 report["completed"] += 1
@@ -205,6 +352,7 @@ def process_temp_dir(
                 glossary_domain,
                 glossary_auto_select,
                 glossary_auto_max_datasets,
+                repair_glossary_mismatches,
             ): item
             for item in pending
         }
@@ -234,6 +382,7 @@ def main():
     parser.add_argument("--glossary-domain")
     parser.add_argument("--glossary-auto-select", action="store_true")
     parser.add_argument("--glossary-auto-max-datasets", type=int, default=2)
+    parser.add_argument("--repair-glossary-mismatches", action="store_true")
     args = parser.parse_args()
 
     report = process_temp_dir(
@@ -250,6 +399,7 @@ def main():
         glossary_domain=args.glossary_domain,
         glossary_auto_select=args.glossary_auto_select,
         glossary_auto_max_datasets=args.glossary_auto_max_datasets,
+        repair_glossary_mismatches=args.repair_glossary_mismatches,
     )
     print(report)
 
