@@ -47,14 +47,15 @@ def _is_connector_character(ch):
     return ch in CONNECTOR_CHARACTERS
 
 
+def _contains_connector(text):
+    return any(_is_connector_character(ch) for ch in text)
+
+
 def _left_phrase_extension(text):
     if not text:
         return ""
-    split_index = -1
-    for index, ch in enumerate(text):
-        if _is_connector_character(ch):
-            split_index = index
-    if split_index >= 0:
+    if _contains_connector(text):
+        split_index = max(index for index, ch in enumerate(text) if _is_connector_character(ch))
         text = text[split_index + 1 :]
     while text and not _is_cjk_character(text[0]):
         text = text[1:]
@@ -74,6 +75,19 @@ def _right_phrase_extension(text):
 
 def _is_phrase_boundary_marker(text):
     return any(_is_connector_character(ch) for ch in text) or any(not _is_cjk_character(ch) for ch in text)
+
+
+def _is_safe_right_extension(text):
+    if not text:
+        return False
+    if _contains_connector(text):
+        return False
+    index = 0
+    while index < len(text) and _is_cjk_character(text[index]):
+        index += 1
+    if index != 1:
+        return False
+    return all(not ch.isalnum() and not _is_cjk_character(ch) for ch in text[index:])
 
 
 def build_converter(config=DEFAULT_OPENCC_CONFIG):
@@ -125,10 +139,60 @@ def classify_variant_change(
 
 
 def _refine_single_character_change(original_text, candidate_text, opcodes, index, i1, i2, j1, j2):
-    if len(original_text[i1:i2]) != 1 or len(candidate_text[j1:j2]) != 1:
+    source_text = original_text[i1:i2]
+    replacement_text = candidate_text[j1:j2]
+
+    if len(source_text) == 1 and len(replacement_text) == 1:
+        previous_opcode = opcodes[index - 1] if index > 0 else None
+        next_opcode = opcodes[index + 1] if index + 1 < len(opcodes) else None
+
+        if previous_opcode is not None and previous_opcode[0] == "equal":
+            previous_text = original_text[previous_opcode[1] : previous_opcode[2]]
+            left_extension = _left_phrase_extension(previous_text)
+            if left_extension:
+                start = i1 - len(left_extension)
+                candidate_start = j1 - len(left_extension)
+                return {
+                    "source_text": original_text[start:i2],
+                    "replacement_text": candidate_text[candidate_start:j2],
+                    "start": start,
+                    "end": i2,
+                    "candidate_start": candidate_start,
+                    "candidate_end": j2,
+                    "boundary_strength": "strong",
+                }
+
+        if next_opcode is not None and next_opcode[0] == "equal":
+            next_text = original_text[next_opcode[1] : next_opcode[2]]
+            if _is_safe_right_extension(next_text):
+                right_extension = _right_phrase_extension(next_text)
+                if right_extension:
+                    end = i2 + len(right_extension)
+                    candidate_end = j2 + len(right_extension)
+                    return {
+                        "source_text": original_text[i1:end],
+                        "replacement_text": candidate_text[j1:candidate_end],
+                        "start": i1,
+                        "end": end,
+                        "candidate_start": j1,
+                        "candidate_end": candidate_end,
+                        "boundary_strength": "strong",
+                    }
+
+    if len(source_text) == 2 and len(replacement_text) == 2:
+        if _contains_connector(source_text) or _contains_connector(replacement_text):
+            return {
+                "source_text": source_text,
+                "replacement_text": replacement_text,
+                "start": i1,
+                "end": i2,
+                "candidate_start": j1,
+                "candidate_end": j2,
+                "boundary_strength": "weak",
+            }
         return {
-            "source_text": original_text[i1:i2],
-            "replacement_text": candidate_text[j1:j2],
+            "source_text": source_text,
+            "replacement_text": replacement_text,
             "start": i1,
             "end": i2,
             "candidate_start": j1,
@@ -136,65 +200,7 @@ def _refine_single_character_change(original_text, candidate_text, opcodes, inde
             "boundary_strength": "strong",
         }
 
-    source_start = i1
-    source_end = i2
-    candidate_start = j1
-    candidate_end = j2
-    selected_side = None
-    boundary_strength = "weak"
-
-    previous_opcode = opcodes[index - 1] if index > 0 else None
-    next_opcode = opcodes[index + 1] if index + 1 < len(opcodes) else None
-
-    left_extension = ""
-    if previous_opcode is not None and previous_opcode[0] == "equal":
-        left_extension = _left_phrase_extension(original_text[previous_opcode[1] : previous_opcode[2]])
-
-    right_extension = ""
-    if next_opcode is not None and next_opcode[0] == "equal":
-        right_extension = _right_phrase_extension(original_text[next_opcode[1] : next_opcode[2]])
-
-    if left_extension or right_extension:
-        if left_extension and right_extension:
-            if len(left_extension) < len(right_extension):
-                selected_side = "left"
-            elif len(right_extension) < len(left_extension):
-                selected_side = "right"
-            else:
-                selected_side = None
-        elif left_extension:
-            selected_side = "left"
-        else:
-            selected_side = "right"
-
-    if selected_side == "left":
-        source_start -= len(left_extension)
-        candidate_start -= len(left_extension)
-        boundary_strength = "strong"
-        if len(left_extension) == 1 and previous_opcode is not None and _is_phrase_boundary_marker(
-            original_text[previous_opcode[1] : previous_opcode[2]]
-        ):
-            boundary_strength = "strong"
-    elif selected_side == "right":
-        source_end += len(right_extension)
-        candidate_end += len(right_extension)
-        boundary_strength = "strong"
-        if len(right_extension) == 1 and next_opcode is not None:
-            following_text = original_text[next_opcode[2] : next_opcode[2] + 1]
-            if following_text and following_text in {"。", "！", "？", ".", "!", "?"}:
-                boundary_strength = "strong"
-
-    source_text = original_text[source_start:source_end]
-    replacement_text = candidate_text[candidate_start:candidate_end]
-    return {
-        "source_text": source_text,
-        "replacement_text": replacement_text,
-        "start": source_start,
-        "end": source_end,
-        "candidate_start": candidate_start,
-        "candidate_end": candidate_end,
-        "boundary_strength": boundary_strength,
-    }
+    return None
 
 
 def extract_variant_changes(original_text, candidate_text):
@@ -214,6 +220,8 @@ def extract_variant_changes(original_text, candidate_text):
             j1,
             j2,
         )
+        if refined_change is None:
+            continue
         source_text = refined_change["source_text"]
         replacement_text = refined_change["replacement_text"]
 
