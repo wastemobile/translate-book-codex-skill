@@ -69,9 +69,9 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 - `tests/`: unit tests for the vendored pipeline and provider-flexible local model stages
 - `docs/superpowers/`: design spec and implementation plan
 
-## NAER Glossary Prototype
+## NAER Glossary V1
 
-This repository now includes an experimental glossary pipeline for importing NAER term downloads and using them as chunk-level translation references.
+This repository now includes a glossary v1 pipeline for importing NAER term downloads and using them as chunk-level translation references.
 
 Script:
 
@@ -114,6 +114,12 @@ The prototype uses a `reference + QA` policy:
 - post-translation checks flag `term_mismatch` cases where expected terminology was not used
 - multiple datasets are supported through comma-separated dataset and domain filters, with left-to-right priority
 - when `--glossary-auto-select` is enabled and no dataset is specified, the pipeline picks the top matching datasets for each chunk
+
+Current recommendation:
+
+- Stage 2 and Stage 3 glossary injection is usable
+- glossary mismatch audit is usable
+- glossary repair should still be treated as experimental until more real-book validation is completed
 
 Translation-stage integration:
 
