@@ -25,8 +25,8 @@ class RunBookTests(unittest.TestCase):
         self.assertEqual(report["status"], "ok")
         preflight_mock.assert_called_once_with(
             input_file="novel.epub",
-            stage2_model="gemma-4-e4b-it-mxfp8",
-            stage3_model="gemma-4-26b-a4b-it-mxfp4",
+            stage2_model="gemma-4-e4b-it-8bit",
+            stage3_model="gemma-4-26b-a4b-it-4bit",
             api_base="http://127.0.0.1:8000/v1",
             api_key=None,
         )
@@ -35,8 +35,8 @@ class RunBookTests(unittest.TestCase):
         refine_command = run_step_mock.call_args_list[2].args[1]
         audit_command = run_step_mock.call_args_list[3].args[1]
         merge_command = run_step_mock.call_args_list[4].args[1]
-        self.assertIn("gemma-4-e4b-it-mxfp8", draft_command)
-        self.assertIn("gemma-4-26b-a4b-it-mxfp4", refine_command)
+        self.assertIn("gemma-4-e4b-it-8bit", draft_command)
+        self.assertIn("gemma-4-26b-a4b-it-4bit", refine_command)
         self.assertIn("--promote", audit_command)
         self.assertIn("epub", merge_command)
 

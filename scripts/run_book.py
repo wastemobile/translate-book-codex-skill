@@ -17,8 +17,8 @@ DEFAULT_API_BASE = "http://127.0.0.1:8000/v1"
 # Model IDs must match the names served by the local model runtime (oMLX/Ollama).
 # These values align with the defaults in ollama_stage_translate.py and
 # ollama_stage_refine.py so that preflight validates the same IDs the stages use.
-DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-mxfp8"
-DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-mxfp4"
+DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
+DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit"
 
 
 def derive_temp_dir(input_file):

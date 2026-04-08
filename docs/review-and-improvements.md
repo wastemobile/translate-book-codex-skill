@@ -9,29 +9,31 @@
 
 ### Bug #1｜模型名稱常數不一致（高影響）
 
-**檔案：** `scripts/run_book.py`、`scripts/preflight.py`
+**檔案：** `scripts/ollama_stage_translate.py`、`scripts/ollama_stage_refine.py`
 
 **問題：**
 
-`run_book.py` 和 `preflight.py` 的預設模型 ID 使用 `8bit`/`4bit` 後綴，
-而實際執行翻譯的 Stage 2/3 腳本使用不同的 `mxfp8`/`mxfp4` 後綴。
+Stage 2/3 腳本的預設模型 ID 使用 `mxfp8`/`mxfp4` 後綴，
+但本地 MLX 伺服器實際提供的模型 ID 是 `8bit`/`4bit` 後綴。
 
 ```python
-# run_book.py / preflight.py（修復前）
-DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"    # ← 錯誤
-DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit" # ← 錯誤
+# ollama_stage_translate.py（修復前）
+DEFAULT_MODEL = "gemma-4-e4b-it-mxfp8"    # ← 錯誤
 
-# ollama_stage_translate.py（正確）
-DEFAULT_MODEL = "gemma-4-e4b-it-mxfp8"
-# ollama_stage_refine.py（正確）
-DEFAULT_MODEL = "gemma-4-26b-a4b-it-mxfp4"
+# ollama_stage_refine.py（修復前）
+DEFAULT_MODEL = "gemma-4-26b-a4b-it-mxfp4" # ← 錯誤
+
+# run_book.py / preflight.py（原本已正確）
+DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
+DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit"
 ```
 
-**後果：** Preflight 檢查 `gemma-4-e4b-it-8bit` 是否存在，但 Stage 2 實際要求
-`gemma-4-e4b-it-mxfp8`。如果伺服器只有後者，preflight 會誤報 `fail` 而中止整個流程；
-若伺服器只有前者，preflight 通過但 Stage 2 在執行時才失敗，且沒有清楚的錯誤訊息。
+**後果：** Preflight 以正確的 `8bit`/`4bit` 名稱查詢 API，會通過；但 Stage 2/3
+在執行時以 `mxfp8`/`mxfp4` 發出請求，伺服器回傳 404 / model-not-found，
+整個翻譯流程在 preflight 通過後才於執行階段失敗，且沒有清楚的錯誤提示。
 
-**修復：** 統一改為 `mxfp8`/`mxfp4`，與 stage 腳本的預設值對齊。
+**修復：** 將 Stage 腳本的 `DEFAULT_MODEL` 統一改為 `8bit`/`4bit`，
+與 `run_book.py`、`preflight.py` 及伺服器實際 model ID 對齊。
 
 ---
 
@@ -236,8 +238,8 @@ row_hash = hashlib.sha256(
 
 ```python
 # scripts/constants.py
-DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-mxfp8"
-DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-mxfp4"
+DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
+DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit"
 DEFAULT_PROVIDER = "omlx"
 DEFAULT_API_BASE = "http://127.0.0.1:8000/v1"
 ```
@@ -303,14 +305,14 @@ def load_config(temp_dir):
 {"name": "stage2_model", "status": "fail", "detail": "missing model id: gemma-4-e4b-it-8bit"}
 ```
 
-**原因：** Bug #1（已修復）。服務端提供 `mxfp8` 後綴，但 preflight 查的是 `8bit` 後綴。
+**原因：** Bug #1（已修復）。Stage 腳本使用 `mxfp8`/`mxfp4` 後綴，但伺服器實際 model ID 是 `8bit`/`4bit` 後綴。
 
 **處理：** 升級到本 PR 後問題消失。臨時繞過方式：
 
 ```bash
 python3 scripts/run_book.py --input-file ./book.epub \
-  --stage2-model gemma-4-e4b-it-mxfp8 \
-  --stage3-model gemma-4-26b-a4b-it-mxfp4
+  --stage2-model gemma-4-e4b-it-8bit \
+  --stage3-model gemma-4-26b-a4b-it-4bit
 ```
 
 ---

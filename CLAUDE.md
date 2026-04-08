@@ -55,8 +55,8 @@ The pipeline is: `convert → draft → refine → audit --promote → merge/bui
 
 - **`local_model_client.py`** — central LLM client; supports `omlx` (default, OpenAI-compatible `/chat/completions`) and `ollama` (`/api/generate`). Provider/endpoint resolved from CLI args, then `LOCAL_LLM_PROVIDER` / `LOCAL_LLM_API_BASE` / `LOCAL_LLM_API_KEY` env vars, then hardcoded defaults (`http://127.0.0.1:8000/v1` for oMLX).
 - **`ollama_common.py`** — thin backward-compat wrapper around `local_model_client`; kept only for legacy imports.
-- **`ollama_stage_translate.py`** — Stage 2 draft; reads `chunk*.md`, writes `draft_chunk*.md`; skips chunks that already have a draft. Default model: `gemma-4-e4b-it-mxfp8`.
-- **`ollama_stage_refine.py`** — Stage 3 refinement; reads `chunk*.md` + `draft_chunk*.md`, writes `refined_chunk*.md`. Default model: `gemma-4-26b-a4b-it-mxfp4`.
+- **`ollama_stage_translate.py`** — Stage 2 draft; reads `chunk*.md`, writes `draft_chunk*.md`; skips chunks that already have a draft. Default model: `gemma-4-e4b-it-8bit`.
+- **`ollama_stage_refine.py`** — Stage 3 refinement; reads `chunk*.md` + `draft_chunk*.md`, writes `refined_chunk*.md`. Default model: `gemma-4-26b-a4b-it-4bit`.
 - **`chunk_audit.py`** — audits `refined_chunk*.md` for empty, too-short, residual-English, and Markdown-mismatch signals; optionally runs NAER glossary mismatch and OpenCC regional lexicon checks; `--promote` copies passing chunks to `output_chunk*.md`.
 - **`naer_terms.py`** — SQLite-backed NAER glossary; supports `.zip`/`.ods` import, chunk-level term lookup, prompt block rendering, and mismatch detection. Used by Stage 2, Stage 3, and audit.
 - **`zh_variant_lexicon.py`** — OpenCC-backed `zh-CN → zh-TW` wording normalization (optional dep: `opencc-python-reimplemented`); used only during audit.
