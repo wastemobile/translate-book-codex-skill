@@ -14,8 +14,11 @@ DEFAULT_TARGET_LANG = "zh-TW"
 DEFAULT_OUTPUT_FORMATS = "epub"
 DEFAULT_PROVIDER = "omlx"
 DEFAULT_API_BASE = "http://127.0.0.1:8000/v1"
-DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
-DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit"
+# Model IDs must match the names served by the local model runtime (oMLX/Ollama).
+# These values align with the defaults in ollama_stage_translate.py and
+# ollama_stage_refine.py so that preflight validates the same IDs the stages use.
+DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-mxfp8"
+DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-mxfp4"
 
 
 def derive_temp_dir(input_file):
@@ -24,8 +27,11 @@ def derive_temp_dir(input_file):
 
 
 def run_step(step_name, command):
-    subprocess.run(command, check=True)
-    return {"name": step_name, "command": command}
+    try:
+        subprocess.run(command, check=True)
+        return {"name": step_name, "status": "ok", "command": command}
+    except subprocess.CalledProcessError as exc:
+        return {"name": step_name, "status": "fail", "error": str(exc), "command": command}
 
 
 def run_pipeline(
@@ -59,7 +65,10 @@ def run_pipeline(
         "--olang",
         target_lang,
     ]
-    steps.append(run_step("convert", convert_command))
+    step = run_step("convert", convert_command)
+    steps.append(step)
+    if step.get("status") == "fail":
+        return {"status": "fail", "preflight": preflight_report, "temp_dir": temp_dir, "steps": steps}
 
     draft_command = [
         "python3",

@@ -188,7 +188,13 @@ def repair_terminology_mismatches(
         return refined_text
     repaired = refined_text
     current_report = mismatch_report
-    for issue in mismatch_report["issues"]:
+    # Iterate current_report["issues"] on each pass so we always work from the
+    # latest repaired state rather than the stale original issue list.
+    max_passes = len(mismatch_report["issues"])
+    for _ in range(max_passes):
+        if not current_report["issues"]:
+            break
+        issue = current_report["issues"][0]
         prompt = build_repair_prompt(
             source_text,
             repaired,

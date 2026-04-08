@@ -151,7 +151,14 @@ def audit_temp_dir(
         output = os.path.join(temp_dir, f"output_{chunk_name}")
         if not os.path.exists(source):
             report["failed"] += 1
-            issue = {"source": source, "reasons": ["missing_source"], "regional_opencc_available": report["regional_opencc_available"]}
+            issue = {
+                "source": source,
+                "reasons": ["missing_source"],
+                "normalized_text": "",
+                "regional_opencc_available": report["regional_opencc_available"],
+                "regional_auto_fixes": [],
+                "regional_flagged_variants": [],
+            }
             report["issues"].append(issue)
             report["chunks"].append({"source": source, "refined": refined, "ok": False, **issue})
             continue
@@ -185,10 +192,11 @@ def audit_temp_dir(
         if result["ok"]:
             report["passed"] += 1
             if promote:
-                shutil.copyfile(refined, output)
-                if regional_lexicon_auto_fix:
-                    with open(output, "w", encoding="utf-8") as handle:
-                        handle.write(result["normalized_text"])
+                # Always write normalized_text: equals the original translated_text when
+                # regional_lexicon_auto_fix is False (audit_chunk guarantees this), so the
+                # single write covers both the plain-promote and the auto-fix path.
+                with open(output, "w", encoding="utf-8") as handle:
+                    handle.write(result["normalized_text"])
                 report["promoted"] += 1
                 chunk_entry["promoted"] = True
         else:
