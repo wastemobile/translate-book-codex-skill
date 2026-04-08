@@ -49,6 +49,21 @@ class AuditChunkTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("residual_english", result["reasons"])
 
+    def test_allows_expected_english_product_names_in_otherwise_translated_text(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "chunk0001.md"
+            refined = Path(temp_dir) / "refined_chunk0001.md"
+            source.write_text("Micro.blog works with WordPress and IndieWeb standards.", encoding="utf-8")
+            refined.write_text(
+                "Micro.blog 可與 WordPress 和 IndieWeb 標準搭配運作，並保留原有連結。",
+                encoding="utf-8",
+            )
+
+            result = chunk_audit.audit_chunk(str(source), str(refined))
+
+            self.assertTrue(result["ok"])
+            self.assertNotIn("residual_english", result["reasons"])
+
     def test_flags_term_mismatch_when_glossary_check_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "chunk0001.md"

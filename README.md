@@ -2,12 +2,18 @@
 
 Version: `0.3.0`
 
-Codex skill for translating whole books through a four-stage workflow:
+Codex skill for translating whole books through a four-stage workflow.
 
-1. Codex translates a few sample chunks as style and terminology anchors.
-2. Local `gemma-4-e4b-it-mxfp8` generates fast draft translations.
-3. Local `gemma-4-26b-a4b-it-mxfp4` refines each chunk.
-4. Codex reviews only high-risk chunks before final packaging.
+The recommended interface is now a single entrypoint that performs preflight automatically:
+
+```bash
+python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
+  --input-file ./novel.epub \
+  --target-lang zh-TW \
+  --output-formats epub
+```
+
+The manual stage-by-stage commands remain available for debugging and resume work, but they are no longer the primary path.
 
 ## Architecture Overview
 
@@ -101,16 +107,64 @@ Current local model policy:
 - `python3`
 - `pandoc`
 - `ebook-convert`
-- Python packages:
+- Required Python packages:
   - `pypandoc`
-  - `beautifulsoup4` recommended
-  - `markdown` recommended
+- Recommended Python packages:
+  - `beautifulsoup4`
+  - `markdown`
+- Optional Python packages:
+  - `opencc-python-reimplemented` for `zh-TW` regional lexicon normalization during audit
 - Local model runtime:
   - default: `oMLX` at `http://127.0.0.1:8000/v1`
   - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
 - Recommended local models:
-  - `gemma-4-e4b-it-mxfp8`
-  - `gemma-4-26b-a4b-it-mxfp4`
+  - `gemma-4-e4b-it-8bit`
+  - `gemma-4-26b-a4b-it-4bit`
+
+## Preflight
+
+The normal entrypoint is now `scripts/run_book.py`. It automatically runs preflight before starting a long translation job.
+
+Typical usage from any working directory:
+
+```bash
+python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
+  --input-file ./novel.epub \
+  --target-lang zh-TW \
+  --output-formats epub
+```
+
+Default behavior:
+
+- provider: `omlx`
+- API base: `http://127.0.0.1:8000/v1`
+- Stage 2 model: `gemma-4-e4b-it-8bit`
+- Stage 3 model: `gemma-4-26b-a4b-it-4bit`
+- pipeline: `preflight -> convert -> draft -> refine -> audit --promote -> merge/build`
+
+Only override values when needed, for example a custom model or different output formats.
+
+If you want to run the checks by themselves first, use:
+
+```bash
+python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/preflight.py \
+  --input-file ./book.epub \
+  --stage2-model gemma-4-e4b-it-8bit \
+  --stage3-model gemma-4-26b-a4b-it-4bit \
+  --api-base http://127.0.0.1:8000/v1 \
+  --api-key "$LOCAL_LLM_API_KEY"
+```
+
+This check verifies:
+
+- the input file exists
+- the current working directory is writable
+- `pandoc` and `ebook-convert` are available
+- required and optional Python modules are visible
+- the local model API is reachable
+- the requested Stage 2 and Stage 3 model IDs are actually exposed by the server
+
+If `OpenCC` is unavailable, preflight returns a warning instead of a hard failure. The book can still be translated, but audit-stage `zh-TW` regional lexicon normalization will be skipped.
 
 ## Repository Layout
 

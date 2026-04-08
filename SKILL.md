@@ -1,11 +1,35 @@
 ---
 name: translate-book
-description: Translate long-form books and ebooks (PDF, DOCX, EPUB) through a four-stage Codex plus local model workflow. Use when converting a book into Markdown chunks, generating baseline sample translations with Codex, running local `gemma-4-e4b-it-mxfp8` drafts, running local `gemma-4-26b-a4b-it-mxfp4` refinement, auditing high-risk chunks, and packaging final translated output back into HTML, DOCX, EPUB, and PDF with Pandoc and Calibre.
+description: Translate long-form books and ebooks (PDF, DOCX, EPUB) through a four-stage Codex plus local model workflow. Use when converting a book into Markdown chunks, generating baseline sample translations with Codex, running local `gemma-4-e4b-it-8bit` drafts, running local `gemma-4-26b-a4b-it-4bit` refinement, auditing high-risk chunks, and packaging final translated output back into HTML, DOCX, EPUB, and PDF with Pandoc and Calibre.
 ---
 
 # Translate Book
 
 Use this skill to translate an entire book with a conservative, resumable pipeline that preserves the original `translate-book` conversion and packaging flow while reducing large-model usage.
+
+## Default Workflow
+
+For normal usage, do not manually spell out each stage. Use the single entrypoint:
+
+```bash
+python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
+  --input-file "<file_path>" \
+  --target-lang "zh-TW" \
+  --output-formats "epub"
+```
+
+This entrypoint automatically:
+
+- runs `preflight`
+- uses `omlx` by default
+- uses `http://127.0.0.1:8000/v1` by default
+- uses `gemma-4-e4b-it-8bit` for Stage 2 unless overridden
+- uses `gemma-4-26b-a4b-it-4bit` for Stage 3 unless overridden
+- runs `convert -> draft -> refine -> audit --promote -> merge/build`
+- stops immediately if preflight returns `fail`
+- continues on `warn`, but should clearly report the warnings
+
+Only override models, provider, API base, or formats if the user explicitly asks or the preflight result requires it.
 
 ## Requirements
 
@@ -13,18 +37,31 @@ Use this skill to translate an entire book with a conservative, resumable pipeli
 - `pandoc`
 - `ebook-convert`
 - Python packages:
-  - `pypandoc`
-  - `beautifulsoup4` (recommended)
-  - `markdown` (recommended)
+  - required: `pypandoc`
+  - recommended: `beautifulsoup4`, `markdown`
+  - optional: `opencc-python-reimplemented` for `zh-TW` regional lexicon normalization during audit
 - Local model runtime:
   - default: `oMLX` at `http://127.0.0.1:8000/v1`
   - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
 - Recommended local models:
-  - `gemma-4-e4b-it-mxfp8`
-  - `gemma-4-26b-a4b-it-mxfp4`
+  - `gemma-4-e4b-it-8bit`
+  - `gemma-4-26b-a4b-it-4bit`
 - When using `oMLX`, keep these two models as the normal resident set and choose between them by stage:
-  - `gemma-4-e4b-it-mxfp8` for Stage 2 draft speed
-  - `gemma-4-26b-a4b-it-mxfp4` for Stage 3 refinement quality
+  - `gemma-4-e4b-it-8bit` for Stage 2 draft speed
+  - `gemma-4-26b-a4b-it-4bit` for Stage 3 refinement quality
+
+`run_book.py` already performs preflight automatically. Run `preflight.py` directly only when you want to inspect environment problems before starting:
+
+```bash
+python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/preflight.py \
+  --input-file "<file_path>" \
+  --stage2-model gemma-4-e4b-it-8bit \
+  --stage3-model gemma-4-26b-a4b-it-4bit \
+  --api-base http://127.0.0.1:8000/v1 \
+  --api-key "$LOCAL_LLM_API_KEY"
+```
+
+Do not start the low-level stage scripts manually if preflight returns `fail`.
 
 ## Collect Parameters
 
@@ -39,7 +76,9 @@ Determine these values from the user's request:
 
 If the user did not provide a file path, ask for it.
 
-## End-To-End Workflow
+## Manual Workflow
+
+Use the following low-level stage commands only for debugging, resuming, or developing the skill itself. For ordinary translation work, prefer `scripts/run_book.py`.
 
 ### 1. Convert Source Book To Markdown Chunks
 
@@ -87,7 +126,7 @@ This stage:
 - reads `chunk*.md`
 - skips chunks that already have `draft_chunk*.md`
 - defaults to provider `omlx`
-- uses model `gemma-4-e4b-it-mxfp8`
+- uses model `gemma-4-e4b-it-8bit`
 - writes `draft_chunk*.md`
 - retries each failed chunk once
 
@@ -104,7 +143,7 @@ This stage:
 - reads `chunk*.md` plus `draft_chunk*.md`
 - skips chunks that already have `refined_chunk*.md`
 - defaults to provider `omlx`
-- uses model `gemma-4-26b-a4b-it-mxfp4`
+- uses model `gemma-4-26b-a4b-it-4bit`
 - writes `refined_chunk*.md`
 - retries each failed chunk once
 
@@ -167,15 +206,7 @@ Then write the final result to `output_chunk*.md`.
 
 ### 7. Confirm Output Format(s)
 
-Before the final build, ask the user which output format(s) they want.
-
-Rules:
-
-- default to the original source format
-- if the source file is `epub`, default output is `epub`
-- if the source file is `pdf`, default output is `pdf`
-- if the source file is `docx`, default output is `docx`
-- the user may request multiple formats, such as `epub,pdf`
+If the user did not specify output formats, default to the original source format.
 
 ### 8. Merge And Build The Final Ebook
 

@@ -13,6 +13,7 @@ from zh_variant_lexicon import normalize_with_opencc
 
 
 ENGLISH_WORD_RE = re.compile(r"\b[A-Za-z]{4,}\b")
+CJK_CHAR_RE = re.compile(r"[\u3400-\u9fff]")
 
 
 def _markdown_signal_count(text):
@@ -24,6 +25,25 @@ def _markdown_signal_count(text):
             text.count("[^"),
         ]
     )
+
+
+def _has_residual_english(text):
+    english_words = ENGLISH_WORD_RE.findall(text)
+    if len(english_words) < 3:
+        return False
+
+    cjk_chars = len(CJK_CHAR_RE.findall(text))
+    if cjk_chars == 0:
+        return True
+
+    english_chars = sum(len(word) for word in english_words)
+    if english_chars > max(40, cjk_chars * 2):
+        return True
+
+    if len(english_words) >= 8 and english_chars >= max(32, cjk_chars):
+        return True
+
+    return False
 
 
 def audit_chunk(
@@ -48,8 +68,7 @@ def audit_chunk(
     if stripped and len(stripped) < max(5, int(len(source_text.strip()) * 0.1)):
         reasons.append("too_short")
 
-    english_words = ENGLISH_WORD_RE.findall(stripped)
-    if stripped and len(english_words) >= 3:
+    if stripped and _has_residual_english(stripped):
         reasons.append("residual_english")
 
     source_markdown = _markdown_signal_count(source_text)
