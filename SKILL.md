@@ -1,6 +1,6 @@
 ---
 name: translate-book
-description: Translate long-form books and ebooks (PDF, DOCX, EPUB) through a four-stage Codex plus local model workflow. Use when converting a book into Markdown chunks, generating baseline sample translations with Codex, running local `aya-expanse-8b-4bit-mlx` drafts, running local `gemma-4-26b-a4b-it-mxfp4` refinement, auditing high-risk chunks, and packaging final translated output back into HTML, DOCX, EPUB, and PDF with Pandoc and Calibre.
+description: Translate long-form books and ebooks (PDF, DOCX, EPUB) through a four-stage Codex plus local model workflow. Use when converting a book into Markdown chunks, generating baseline sample translations with Codex, running local `gemma-4-e4b-it-mxfp8` drafts, running local `gemma-4-26b-a4b-it-mxfp4` refinement, auditing high-risk chunks, and packaging final translated output back into HTML, DOCX, EPUB, and PDF with Pandoc and Calibre.
 ---
 
 # Translate Book
@@ -20,7 +20,7 @@ Use this skill to translate an entire book with a conservative, resumable pipeli
   - default: `oMLX` at `http://127.0.0.1:8000/v1`
   - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
 - Recommended local models:
-  - `aya-expanse-8b-4bit-mlx`
+  - `gemma-4-e4b-it-mxfp8`
   - `gemma-4-26b-a4b-it-mxfp4`
 
 ## Collect Parameters
@@ -84,7 +84,7 @@ This stage:
 - reads `chunk*.md`
 - skips chunks that already have `draft_chunk*.md`
 - defaults to provider `omlx`
-- uses model `aya-expanse-8b-4bit-mlx`
+- uses model `gemma-4-e4b-it-mxfp8`
 - writes `draft_chunk*.md`
 - retries each failed chunk once
 
@@ -112,7 +112,7 @@ python3 scripts/ollama_stage_translate.py \
   --temp-dir "<temp_dir>" \
   --provider ollama \
   --api-base "http://127.0.0.1:11434/api/generate" \
-  --model "aya-expanse:8b"
+  --model "<stage_2_model>"
 ```
 
 The local model stages accept:

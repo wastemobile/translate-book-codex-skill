@@ -5,7 +5,7 @@
 將 `deusyu/translate-book` 的 Claude Code Skill 改寫為可重複使用的 Codex Skill，保留原有前後處理與電子書打包流程，並將中段翻譯流程改為四階段混合式編排：
 
 1. 內建大模型先翻少量 chunks 作為基準樣本
-2. 本機 `aya-expanse:8b` 進行快速初譯
+2. 本機 `gemma-4-e4b-it-mxfp8` 進行快速初譯
 3. 本機 `gemma4:26b` 進行逐 chunk 細修
 4. 內建大模型對高風險 chunks 做最後檢查與潤飾
 
@@ -80,7 +80,7 @@ translate-book/
 
 ### Stage 2: Fast Draft Translation
 
-由本機 `aya-expanse:8b` 進行全量初譯。
+由本機 `gemma-4-e4b-it-mxfp8` 進行全量初譯。
 
 - 輸入：`chunk*.md`
 - 輸出：`draft_chunk*.md`
@@ -111,7 +111,7 @@ translate-book/
 - `sample_chunk0001.md`
   - 第 1 階段大模型建立的樣本譯文，只存在於少量樣本
 - `draft_chunk0001.md`
-  - 第 2 階段 `aya-expanse:8b` 初譯
+  - 第 2 階段 `gemma-4-e4b-it-mxfp8` 初譯
 - `refined_chunk0001.md`
   - 第 3 階段 `gemma4:26b` 細修
 - `output_chunk0001.md`
@@ -182,7 +182,7 @@ Stage 2 與 Stage 3 皆採保守重試：
 
 - 每個 chunk 最多 2 次
 - 若 Stage 2 失敗：
-  - 重跑一次 `aya-expanse:8b`
+  - 重跑一次 `gemma-4-e4b-it-mxfp8`
   - 再失敗則交由 audit 標記
 - 若 Stage 3 失敗：
   - 保留 `draft_`

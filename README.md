@@ -5,7 +5,7 @@ Version: `0.3.0`
 Codex skill for translating whole books through a four-stage workflow:
 
 1. Codex translates a few sample chunks as style and terminology anchors.
-2. Local `aya-expanse-8b-4bit-mlx` generates fast draft translations.
+2. Local `gemma-4-e4b-it-mxfp8` generates fast draft translations.
 3. Local `gemma-4-26b-a4b-it-mxfp4` refines each chunk.
 4. Codex reviews only high-risk chunks before final packaging.
 
@@ -72,7 +72,7 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 
 - replaces the original high-concurrency subagent workflow with a conservative low-concurrency Codex workflow
 - uses Codex itself only for a few sample chunks and final high-risk review
-- adds a local-model draft stage, defaulting to `oMLX`, with `aya-expanse-8b-4bit-mlx`
+- adds a local-model draft stage, defaulting to `oMLX`, with `gemma-4-e4b-it-mxfp8`
 - adds a local-model refinement stage, defaulting to `oMLX`, with `gemma-4-26b-a4b-it-mxfp4`
 - adds `chunk_audit.py` to classify suspicious chunks and promote safe refined outputs
 - preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_` instead of writing only one translation layer
@@ -102,7 +102,7 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
   - default: `oMLX` at `http://127.0.0.1:8000/v1`
   - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
 - Recommended local models:
-  - `aya-expanse-8b-4bit-mlx`
+  - `gemma-4-e4b-it-mxfp8`
   - `gemma-4-26b-a4b-it-mxfp4`
 
 ## Repository Layout

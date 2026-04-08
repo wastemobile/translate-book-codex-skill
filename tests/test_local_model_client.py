@@ -68,7 +68,7 @@ class GenerateTextTests(unittest.TestCase):
         with mock.patch.object(local_model_client.request, "urlopen", return_value=response) as urlopen_mock:
             result = local_model_client.generate_text(
                 "translate me",
-                model="aya-expanse-8b-4bit-mlx",
+                model="gemma-4-e4b-it-mxfp8",
                 provider="omlx",
                 api_base="http://127.0.0.1:8000/v1",
                 api_key="secret",
@@ -80,7 +80,7 @@ class GenerateTextTests(unittest.TestCase):
         self.assertEqual(req.full_url, "http://127.0.0.1:8000/v1/chat/completions")
         self.assertEqual(req.get_header("Authorization"), "Bearer secret")
         payload = json.loads(req.data.decode("utf-8"))
-        self.assertEqual(payload["model"], "aya-expanse-8b-4bit-mlx")
+        self.assertEqual(payload["model"], "gemma-4-e4b-it-mxfp8")
         self.assertEqual(payload["messages"][0]["content"], "translate me")
         self.assertEqual(payload["temperature"], 0.2)
 
@@ -95,7 +95,7 @@ class GenerateTextTests(unittest.TestCase):
         with mock.patch.object(local_model_client.request, "urlopen", return_value=response) as urlopen_mock:
             result = local_model_client.generate_text(
                 "translate me",
-                model="aya-expanse:8b",
+                model="gemma-4-e4b-it-mxfp8",
                 provider="ollama",
                 api_base="http://127.0.0.1:11434/api/generate",
                 api_key=None,
@@ -107,7 +107,7 @@ class GenerateTextTests(unittest.TestCase):
         self.assertEqual(req.full_url, "http://127.0.0.1:11434/api/generate")
         self.assertIsNone(req.get_header("Authorization"))
         payload = json.loads(req.data.decode("utf-8"))
-        self.assertEqual(payload["model"], "aya-expanse:8b")
+        self.assertEqual(payload["model"], "gemma-4-e4b-it-mxfp8")
         self.assertEqual(payload["prompt"], "translate me")
         self.assertEqual(payload["options"]["temperature"], 0.2)
 

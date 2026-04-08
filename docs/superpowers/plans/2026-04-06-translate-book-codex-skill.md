@@ -125,7 +125,7 @@ Expected: failures for missing implementation.
 
 Core responsibilities:
 - enumerate source chunks
-- call local Ollama HTTP API for `aya-expanse:8b`
+- call the local model provider for `gemma-4-e4b-it-mxfp8`
 - save outputs as `draft_chunk*.md`
 - retry failed chunks once
 - support configurable parallelism defaulting to `1`

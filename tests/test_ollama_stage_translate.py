@@ -49,7 +49,7 @@ class DraftTranslationPipelineTests(unittest.TestCase):
         self.assertEqual(result, "# 你好\n\n世界")
         generate_mock.assert_called_once_with(
             mock.ANY,
-            model="aya-expanse-8b-4bit-mlx",
+            model="gemma-4-e4b-it-mxfp8",
             provider="omlx",
             api_base="http://127.0.0.1:8000/v1",
             api_key=None,

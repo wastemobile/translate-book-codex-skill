@@ -16,7 +16,7 @@ from local_model_client import (
 from naer_terms import auto_select_datasets, find_glossary_hits, render_glossary_block
 
 
-DEFAULT_MODEL = "aya-expanse-8b-4bit-mlx"
+DEFAULT_MODEL = "gemma-4-e4b-it-mxfp8"
 
 
 def discover_pending_chunks(temp_dir):
