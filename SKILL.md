@@ -22,6 +22,9 @@ Use this skill to translate an entire book with a conservative, resumable pipeli
 - Recommended local models:
   - `gemma-4-e4b-it-mxfp8`
   - `gemma-4-26b-a4b-it-mxfp4`
+- When using `oMLX`, keep these two models as the normal resident set and choose between them by stage:
+  - `gemma-4-e4b-it-mxfp8` for Stage 2 draft speed
+  - `gemma-4-26b-a4b-it-mxfp4` for Stage 3 refinement quality
 
 ## Collect Parameters
 
