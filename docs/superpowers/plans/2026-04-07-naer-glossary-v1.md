@@ -59,7 +59,7 @@ Real NAER datasets imported during development:
 
 Representative real-book validation source:
 
-- `/Users/yoyodyne/lab/stories/What the Dormouse Said.epub`
+- `~/lab/stories/What the Dormouse Said.epub`
 
 Converted test book temp directory:
 
@@ -108,7 +108,7 @@ An audit-stage `zh-CN` to `zh-TW` regional lexicon normalization pass was also v
 
 Validation command pattern:
 
-- `/Users/yoyodyne/lab/stories/translate-book-codex-skill/.venv/bin/python scripts/chunk_audit.py --temp-dir <sample-dir> --regional-lexicon-config s2twp --regional-lexicon-auto-fix --regional-lexicon-report`
+- `.venv/bin/python scripts/chunk_audit.py --temp-dir <sample-dir> --regional-lexicon-config s2twp --regional-lexicon-auto-fix --regional-lexicon-report`
 
 Observed behavior:
 
