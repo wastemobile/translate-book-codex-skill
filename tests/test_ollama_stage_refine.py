@@ -85,7 +85,7 @@ class RefinePipelineTests(unittest.TestCase):
         self.assertEqual(result, "你好，世界")
         refine_mock.assert_called_once_with(
             mock.ANY,
-            model="gemma-4-26b-a4b-it-mxfp4",
+            model="gemma-4-26b-a4b-it-4bit",
             provider="omlx",
             api_base="http://127.0.0.1:8000/v1",
             api_key=None,
