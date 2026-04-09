@@ -17,7 +17,9 @@ class PreflightTests(unittest.TestCase):
     def test_reports_missing_optional_and_required_dependencies(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             book_path = Path(temp_dir) / "book.epub"
+            glossary_path = Path(temp_dir) / "terms.sqlite3"
             book_path.write_text("stub", encoding="utf-8")
+            glossary_path.write_text("stub", encoding="utf-8")
 
             with mock.patch.object(preflight, "find_executable") as find_executable_mock, mock.patch.object(
                 preflight, "find_python_module"
@@ -25,7 +27,7 @@ class PreflightTests(unittest.TestCase):
                 preflight, "fetch_model_ids"
             ) as fetch_model_ids_mock:
                 find_executable_mock.side_effect = lambda name: None if name == "pandoc" else f"/usr/bin/{name}"
-                find_module_mock.side_effect = lambda name: name != "opencc"
+                find_module_mock.side_effect = lambda name, python_executable=None: name not in {"opencc", "markdown"}
                 fetch_model_ids_mock.return_value = ["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-4bit"]
 
                 report = preflight.run_preflight(
@@ -34,16 +36,64 @@ class PreflightTests(unittest.TestCase):
                     stage3_model="gemma-4-26b-a4b-it-4bit",
                     api_base="http://127.0.0.1:8000/v1",
                     api_key="kr4fi8",
+                    python_executable="/shared/python",
+                    glossary_db=str(glossary_path),
+                    require_opencc=True,
                 )
 
             self.assertEqual(report["status"], "fail")
             self.assertGreaterEqual(report["summary"]["fail"], 1)
-            self.assertGreaterEqual(report["summary"]["warn"], 1)
             checks = {item["name"]: item for item in report["checks"]}
             self.assertEqual(checks["pandoc"]["status"], "fail")
-            self.assertEqual(checks["opencc"]["status"], "warn")
+            self.assertEqual(checks["markdown"]["status"], "fail")
+            self.assertEqual(checks["opencc"]["status"], "fail")
+            self.assertEqual(checks["glossary_db"]["status"], "ok")
+            self.assertEqual(checks["python_executable"]["detail"], "/shared/python")
             self.assertEqual(checks["model_api"]["status"], "ok")
             self.assertEqual(checks["stage3_model"]["status"], "ok")
+
+    def test_fails_when_default_glossary_db_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            book_path = Path(temp_dir) / "book.epub"
+            book_path.write_text("stub", encoding="utf-8")
+
+            with mock.patch.object(preflight, "find_executable", return_value="/usr/bin/tool"), mock.patch.object(
+                preflight, "find_python_module", return_value=True
+            ), mock.patch.object(
+                preflight, "fetch_model_ids", return_value=["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-4bit"]
+            ):
+                report = preflight.run_preflight(
+                    input_file=str(book_path),
+                    glossary_db=str(Path(temp_dir) / "missing.sqlite3"),
+                    require_opencc=True,
+                )
+
+        checks = {item["name"]: item for item in report["checks"]}
+        self.assertEqual(checks["glossary_db"]["status"], "fail")
+        self.assertEqual(report["status"], "fail")
+
+    def test_uses_local_llm_api_key_from_environment_when_not_explicitly_passed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            book_path = Path(temp_dir) / "book.epub"
+            glossary_path = Path(temp_dir) / "terms.sqlite3"
+            book_path.write_text("stub", encoding="utf-8")
+            glossary_path.write_text("stub", encoding="utf-8")
+
+            with mock.patch.dict("os.environ", {"LOCAL_LLM_API_KEY": "env-key"}, clear=False), mock.patch.object(
+                preflight, "find_executable", return_value="/usr/bin/tool"
+            ), mock.patch.object(
+                preflight, "find_python_module", return_value=True
+            ), mock.patch.object(
+                preflight, "fetch_model_ids", return_value=["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-4bit"]
+            ) as fetch_mock:
+                report = preflight.run_preflight(
+                    input_file=str(book_path),
+                    glossary_db=str(glossary_path),
+                    require_opencc=True,
+                )
+
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(fetch_mock.call_args.kwargs["api_key"], "env-key")
 
     def test_fetch_model_ids_reads_openai_style_model_list(self):
         response = {

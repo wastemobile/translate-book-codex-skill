@@ -6,8 +6,12 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from urllib import request
+
+from runtime_paths import resolve_api_key, resolve_glossary_db_path, resolve_python_executable
 
 
 DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
@@ -37,8 +41,23 @@ def find_executable(name):
     return None
 
 
-def find_python_module(name):
-    return importlib.util.find_spec(name) is not None
+def find_python_module(name, python_executable=None):
+    python_executable = python_executable or sys.executable
+    if python_executable == sys.executable:
+        return importlib.util.find_spec(name) is not None
+    result = subprocess.run(
+        [
+            python_executable,
+            "-c",
+            (
+                "import importlib.util, sys; "
+                f"sys.exit(0 if importlib.util.find_spec({name!r}) is not None else 1)"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
 
 
 def fetch_model_ids(api_base, api_key=None):
@@ -66,7 +85,13 @@ def run_preflight(
     stage3_model=DEFAULT_STAGE3_MODEL,
     api_base=DEFAULT_API_BASE,
     api_key=None,
+    python_executable=None,
+    glossary_db=None,
+    require_opencc=False,
 ):
+    python_executable = python_executable or resolve_python_executable()
+    glossary_db = glossary_db or resolve_glossary_db_path()
+    api_key = resolve_api_key(api_key)
     report = {
         "status": "ok",
         "summary": {"ok": 0, "warn": 0, "fail": 0},
@@ -92,17 +117,25 @@ def run_preflight(
         else:
             _add_check(report, executable, "fail", f"{executable} not found")
 
+    _add_check(report, "python_executable", "ok", python_executable)
+
     module_checks = [
         ("pypandoc", "fail", "required for HTML <-> Markdown conversion"),
-        ("bs4", "warn", "recommended for HTML parsing"),
-        ("markdown", "warn", "recommended for HTML generation helpers"),
-        ("opencc", "warn", "optional; needed for zh-TW regional lexicon normalization"),
+        ("bs4", "fail", "required for HTML parsing"),
+        ("markdown", "fail", "required for HTML generation helpers"),
+        ("opencc", "fail" if require_opencc else "warn", "required for zh-TW regional lexicon normalization" if require_opencc else "optional; needed for zh-TW regional lexicon normalization"),
     ]
     for module_name, missing_status, missing_detail in module_checks:
-        if find_python_module(module_name):
+        if find_python_module(module_name, python_executable=python_executable):
             _add_check(report, module_name, "ok", f"python module '{module_name}' available")
         else:
             _add_check(report, module_name, missing_status, missing_detail)
+
+    glossary_path = Path(glossary_db)
+    if glossary_path.exists():
+        _add_check(report, "glossary_db", "ok", str(glossary_path))
+    else:
+        _add_check(report, "glossary_db", "fail", f"missing glossary db: {glossary_db}")
 
     try:
         model_ids = fetch_model_ids(api_base, api_key=api_key)
@@ -129,7 +162,10 @@ def main():
     parser.add_argument("--stage2-model", default=DEFAULT_STAGE2_MODEL)
     parser.add_argument("--stage3-model", default=DEFAULT_STAGE3_MODEL)
     parser.add_argument("--api-base", default=DEFAULT_API_BASE)
-    parser.add_argument("--api-key", default=None)
+    parser.add_argument("--api-key", default=resolve_api_key())
+    parser.add_argument("--python-executable", default=resolve_python_executable())
+    parser.add_argument("--glossary-db", default=resolve_glossary_db_path())
+    parser.add_argument("--require-opencc", action="store_true")
     args = parser.parse_args()
     print(
         json.dumps(
@@ -139,6 +175,9 @@ def main():
                 stage3_model=args.stage3_model,
                 api_base=args.api_base,
                 api_key=args.api_key,
+                python_executable=args.python_executable,
+                glossary_db=args.glossary_db,
+                require_opencc=args.require_opencc,
             ),
             ensure_ascii=False,
             indent=2,

@@ -12,7 +12,7 @@ Use this skill to translate an entire book with a conservative, resumable pipeli
 For normal usage, do not manually spell out each stage. Use the single entrypoint:
 
 ```bash
-python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
+$HOME/.codex/translate-book/.venv/bin/python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
   --input-file "<file_path>" \
   --target-lang "zh-TW" \
   --output-formats "epub"
@@ -25,21 +25,23 @@ This entrypoint automatically:
 - uses `http://127.0.0.1:8000/v1` by default
 - uses `gemma-4-e4b-it-8bit` for Stage 2 unless overridden
 - uses `gemma-4-26b-a4b-it-4bit` for Stage 3 unless overridden
+- uses the shared glossary DB at `~/.codex/translate-book/data/terms.sqlite3`
 - runs `convert -> draft -> refine -> audit --promote -> merge/build`
 - stops immediately if preflight returns `fail`
+- for `zh-TW`, treats `OpenCC` and the shared glossary DB as required preflight dependencies
 - continues on `warn`, but should clearly report the warnings
 
 Only override models, provider, API base, or formats if the user explicitly asks or the preflight result requires it.
 
 ## Requirements
 
-- `python3`
+- shared Python runtime: `~/.codex/translate-book/.venv/bin/python3`
 - `pandoc`
 - `ebook-convert`
 - Python packages:
-  - required: `pypandoc`
-  - recommended: `beautifulsoup4`, `markdown`
-  - optional: `opencc-python-reimplemented` for `zh-TW` regional lexicon normalization during audit
+  - required: `pypandoc`, `beautifulsoup4`, `markdown`, `opencc-python-reimplemented`
+- Shared glossary DB:
+  - default: `~/.codex/translate-book/data/terms.sqlite3`
 - Local model runtime:
   - default: `oMLX` at `http://127.0.0.1:8000/v1`
   - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
@@ -53,10 +55,12 @@ Only override models, provider, API base, or formats if the user explicitly asks
 `run_book.py` already performs preflight automatically. Run `preflight.py` directly only when you want to inspect environment problems before starting:
 
 ```bash
-python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/preflight.py \
+$HOME/.codex/translate-book/.venv/bin/python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/preflight.py \
   --input-file "<file_path>" \
   --stage2-model gemma-4-e4b-it-8bit \
   --stage3-model gemma-4-26b-a4b-it-4bit \
+  --glossary-db "$HOME/.codex/translate-book/data/terms.sqlite3" \
+  --require-opencc \
   --api-base http://127.0.0.1:8000/v1 \
   --api-key "$LOCAL_LLM_API_KEY"
 ```
@@ -85,7 +89,7 @@ Use the following low-level stage commands only for debugging, resuming, or deve
 Run:
 
 ```bash
-python3 scripts/convert.py "<file_path>" --olang "<target_lang>"
+$HOME/.codex/translate-book/.venv/bin/python3 scripts/convert.py "<file_path>" --olang "<target_lang>"
 ```
 
 This creates a `*_temp/` directory containing:
@@ -118,7 +122,7 @@ For any sample chunk that is already high quality, you may also use that text as
 Run:
 
 ```bash
-python3 scripts/ollama_stage_translate.py --temp-dir "<temp_dir>" --target-lang "Traditional Chinese" --parallelism 1
+$HOME/.codex/translate-book/.venv/bin/python3 scripts/ollama_stage_translate.py --temp-dir "<temp_dir>" --target-lang "Traditional Chinese" --parallelism 1 --glossary-db "$HOME/.codex/translate-book/data/terms.sqlite3" --glossary-auto-select
 ```
 
 This stage:
@@ -135,7 +139,7 @@ This stage:
 Run:
 
 ```bash
-python3 scripts/ollama_stage_refine.py --temp-dir "<temp_dir>" --target-lang "Traditional Chinese" --parallelism 1
+$HOME/.codex/translate-book/.venv/bin/python3 scripts/ollama_stage_refine.py --temp-dir "<temp_dir>" --target-lang "Traditional Chinese" --parallelism 1 --glossary-db "$HOME/.codex/translate-book/data/terms.sqlite3" --glossary-auto-select --repair-glossary-mismatches
 ```
 
 This stage:
@@ -150,7 +154,7 @@ This stage:
 Provider overrides:
 
 ```bash
-python3 scripts/ollama_stage_translate.py \
+$HOME/.codex/translate-book/.venv/bin/python3 scripts/ollama_stage_translate.py \
   --temp-dir "<temp_dir>" \
   --provider ollama \
   --api-base "http://127.0.0.1:11434/api/generate" \
@@ -175,7 +179,7 @@ Environment variable fallbacks:
 Run:
 
 ```bash
-python3 scripts/chunk_audit.py --temp-dir "<temp_dir>" --promote
+$HOME/.codex/translate-book/.venv/bin/python3 scripts/chunk_audit.py --temp-dir "<temp_dir>" --promote --glossary-db "$HOME/.codex/translate-book/data/terms.sqlite3" --glossary-auto-select --regional-lexicon-auto-fix --regional-lexicon-report
 ```
 
 This stage:
@@ -213,7 +217,7 @@ If the user did not specify output formats, default to the original source forma
 Run:
 
 ```bash
-python3 scripts/merge_and_build.py --temp-dir "<temp_dir>" --title "<translated_title>" --formats "<requested_formats>"
+$HOME/.codex/translate-book/.venv/bin/python3 scripts/merge_and_build.py --temp-dir "<temp_dir>" --title "<translated_title>" --formats "<requested_formats>"
 ```
 
 The final merge/build stage still uses Pandoc and Calibre and produces:

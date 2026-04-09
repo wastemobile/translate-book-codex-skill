@@ -88,7 +88,7 @@ class GenerateFormatTests(unittest.TestCase):
             self._set_mtime(output_file, 200)
             self._set_mtime(image_file, 300)
 
-            with mock.patch.object(
+            with mock.patch.object(merge_and_build, "resolve_python_executable", return_value="/shared/python"), mock.patch.object(
                 merge_and_build.subprocess,
                 "run",
                 return_value=SimpleNamespace(stdout="", stderr=""),
@@ -100,7 +100,7 @@ class GenerateFormatTests(unittest.TestCase):
             self.assertEqual(result, output_file)
             run_mock.assert_called_once()
             cmd = run_mock.call_args.args[0]
-            self.assertEqual(cmd[0], "python3")
+            self.assertEqual(cmd[0], "/shared/python")
             self.assertEqual(cmd[2], html_file)
             self.assertEqual(cmd[4], output_file)
 
@@ -118,7 +118,7 @@ class GenerateFormatTests(unittest.TestCase):
             self._set_mtime(output_file, 200)
             self._set_mtime(cover_file, 300)
 
-            with mock.patch.object(
+            with mock.patch.object(merge_and_build, "resolve_python_executable", return_value="/shared/python"), mock.patch.object(
                 merge_and_build.subprocess,
                 "run",
                 return_value=SimpleNamespace(stdout="", stderr=""),
