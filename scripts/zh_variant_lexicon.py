@@ -17,7 +17,6 @@ LOW_CONFIDENCE_MULTI_TOKEN_PREFIXES = {
     "对于",
     "对於",
     "關於",
-    "关于",
     "使用",
     "利用",
     "通过",

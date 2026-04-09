@@ -2,6 +2,7 @@
 """Helpers and CLI for importing and querying NAER glossary data."""
 
 import argparse
+import hashlib
 import json
 import re
 import sqlite3
@@ -118,8 +119,9 @@ def _cell_text(cell):
 def _expand_row_cells(row):
     cells = []
     for cell in row.findall("table:table-cell", NS):
-        repeat = int(cell.attrib.get(f"{{{NS['table']}}}number-columns-repeated", "1"))
         text = _cell_text(cell)
+        raw_repeat = int(cell.attrib.get(f"{{{NS['table']}}}number-columns-repeated", "1"))
+        repeat = raw_repeat if text else min(raw_repeat, 16)
         cells.extend([text] * repeat)
     return cells
 
@@ -218,15 +220,18 @@ def import_ods_to_sqlite(
         before = conn.total_changes
         for row in rows:
             normalized_source = normalize_term(row["source_term"])
-            row_hash = "|".join(
-                [
-                    dataset,
-                    domain,
-                    row["sheet_name"],
-                    normalized_source,
-                    row["target_term"].strip(),
-                ]
-            )
+            row_hash = hashlib.sha256(
+                json.dumps(
+                    [
+                        dataset,
+                        domain,
+                        row["sheet_name"],
+                        normalized_source,
+                        row["target_term"].strip(),
+                    ],
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
             conn.execute(
                 """
                 INSERT OR IGNORE INTO terms(

@@ -267,6 +267,19 @@ class AuditChunkTests(unittest.TestCase):
 
 
 class PromotionTests(unittest.TestCase):
+    def test_missing_source_issue_uses_full_schema(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            (temp_path / "refined_chunk0001.md").write_text("你好，世界", encoding="utf-8")
+
+            report = chunk_audit.audit_temp_dir(temp_dir, promote=True)
+
+            self.assertEqual(report["failed"], 1)
+            self.assertEqual(report["issues"][0]["source"], str(temp_path / "chunk0001.md"))
+            self.assertEqual(report["issues"][0]["normalized_text"], "")
+            self.assertEqual(report["issues"][0]["regional_auto_fixes"], [])
+            self.assertEqual(report["issues"][0]["regional_flagged_variants"], [])
+
     def test_promotes_clean_refined_chunk_to_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -314,6 +327,38 @@ class PromotionTests(unittest.TestCase):
             )
             self.assertEqual(report["chunks"][0]["normalized_text"], "人工智慧系統依賴網路。")
             self.assertTrue(report["chunks"][0]["promoted"])
+
+    def test_promote_with_regional_auto_fix_writes_output_without_copyfile(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            (temp_path / "chunk0001.md").write_text("人工智能系统依赖网络。", encoding="utf-8")
+            (temp_path / "refined_chunk0001.md").write_text("人工智能系统依赖网络。", encoding="utf-8")
+
+            with mock.patch.object(
+                chunk_audit,
+                "normalize_with_opencc",
+                return_value={
+                    "normalized_text": "人工智慧系統依賴網路。",
+                    "opencc_available": True,
+                    "regional_auto_fixes": [
+                        {"source_text": "人工智能", "replacement_text": "人工智慧", "confidence": "high", "start": 0, "end": 4},
+                    ],
+                    "regional_flagged_variants": [],
+                },
+            ), mock.patch.object(chunk_audit.shutil, "copyfile") as copyfile_mock:
+                report = chunk_audit.audit_temp_dir(
+                    temp_dir,
+                    promote=True,
+                    regional_lexicon_auto_fix=True,
+                    regional_lexicon_report=True,
+                )
+
+            copyfile_mock.assert_not_called()
+            self.assertEqual(report["promoted"], 1)
+            self.assertEqual(
+                (temp_path / "output_chunk0001.md").read_text(encoding="utf-8"),
+                "人工智慧系統依賴網路。",
+            )
 
     def test_regional_lexicon_does_not_fail_when_normalization_is_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:

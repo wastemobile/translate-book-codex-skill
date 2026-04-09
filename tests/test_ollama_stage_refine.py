@@ -85,7 +85,7 @@ class RefinePipelineTests(unittest.TestCase):
         self.assertEqual(result, "你好，世界")
         refine_mock.assert_called_once_with(
             mock.ANY,
-            model="gemma-4-26b-a4b-it-mxfp4",
+            model="gemma-4-26b-a4b-it-4bit",
             provider="omlx",
             api_base="http://127.0.0.1:8000/v1",
             api_key=None,
@@ -205,6 +205,55 @@ class RefinePipelineTests(unittest.TestCase):
 
         self.assertEqual(result, "編譯器處理算術。裝配線在後面。")
         self.assertEqual(generate_mock.call_count, 2)
+
+    def test_repair_refinement_rebuilds_prompt_from_updated_issue_list(self):
+        prompts = []
+
+        def fake_generate_text(prompt, **kwargs):
+            prompts.append(prompt)
+            if "compiler -> 編譯器" in prompt:
+                return "編譯器與 linker 都已提到。"
+            return "編譯器與連結器都已提到。"
+
+        with mock.patch.object(
+            ollama_stage_refine,
+            "check_term_mismatches",
+            side_effect=[
+                {
+                    "matched_terms": 2,
+                    "mismatches": 2,
+                    "issues": [
+                        {"source_term": "compiler", "expected_target": "編譯器"},
+                        {"source_term": "assembly line", "expected_target": "裝配線"},
+                    ],
+                },
+                {
+                    "matched_terms": 2,
+                    "mismatches": 1,
+                    "issues": [{"source_term": "linker", "expected_target": "連結器"}],
+                },
+                {
+                    "matched_terms": 2,
+                    "mismatches": 0,
+                    "issues": [],
+                },
+            ],
+        ), mock.patch.object(
+            ollama_stage_refine,
+            "generate_text",
+            side_effect=fake_generate_text,
+        ):
+            result = ollama_stage_refine.repair_terminology_mismatches(
+                "A compiler works with a linker.",
+                "編譯程式與 linker 一起運作。",
+                glossary_db="terms.sqlite3",
+                glossary_dataset="電子計算機名詞",
+            )
+
+        self.assertEqual(result, "編譯器與連結器都已提到。")
+        self.assertEqual(len(prompts), 2)
+        self.assertIn("compiler -> 編譯器", prompts[0])
+        self.assertIn("linker -> 連結器", prompts[1])
 
     def test_repair_refinement_rejects_candidate_when_mismatches_do_not_improve(self):
         with mock.patch.object(

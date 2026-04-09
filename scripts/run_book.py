@@ -24,8 +24,16 @@ def derive_temp_dir(input_file):
 
 
 def run_step(step_name, command):
-    subprocess.run(command, check=True)
-    return {"name": step_name, "command": command}
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as exc:
+        return {
+            "name": step_name,
+            "status": "fail",
+            "command": command,
+            "error": str(exc),
+        }
+    return {"name": step_name, "status": "ok", "command": command}
 
 
 def run_pipeline(
@@ -59,7 +67,10 @@ def run_pipeline(
         "--olang",
         target_lang,
     ]
-    steps.append(run_step("convert", convert_command))
+    step = run_step("convert", convert_command)
+    steps.append(step)
+    if step["status"] == "fail":
+        return {"status": "fail", "preflight": preflight_report, "temp_dir": temp_dir, "steps": steps}
 
     draft_command = [
         "python3",
@@ -79,7 +90,10 @@ def run_pipeline(
     ]
     if api_key:
         draft_command.extend(["--api-key", api_key])
-    steps.append(run_step("draft", draft_command))
+    step = run_step("draft", draft_command)
+    steps.append(step)
+    if step["status"] == "fail":
+        return {"status": "fail", "preflight": preflight_report, "temp_dir": temp_dir, "steps": steps}
 
     refine_command = [
         "python3",
@@ -99,7 +113,10 @@ def run_pipeline(
     ]
     if api_key:
         refine_command.extend(["--api-key", api_key])
-    steps.append(run_step("refine", refine_command))
+    step = run_step("refine", refine_command)
+    steps.append(step)
+    if step["status"] == "fail":
+        return {"status": "fail", "preflight": preflight_report, "temp_dir": temp_dir, "steps": steps}
 
     audit_command = [
         "python3",
@@ -108,7 +125,10 @@ def run_pipeline(
         temp_dir,
         "--promote",
     ]
-    steps.append(run_step("audit", audit_command))
+    step = run_step("audit", audit_command)
+    steps.append(step)
+    if step["status"] == "fail":
+        return {"status": "fail", "preflight": preflight_report, "temp_dir": temp_dir, "steps": steps}
 
     merge_command = [
         "python3",
@@ -120,7 +140,10 @@ def run_pipeline(
         "--formats",
         output_formats,
     ]
-    steps.append(run_step("merge", merge_command))
+    step = run_step("merge", merge_command)
+    steps.append(step)
+    if step["status"] == "fail":
+        return {"status": "fail", "preflight": preflight_report, "temp_dir": temp_dir, "steps": steps}
 
     status = "warn" if preflight_report["status"] == "warn" else "ok"
     return {
