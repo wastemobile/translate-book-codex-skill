@@ -78,8 +78,8 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 
 - replaces the original high-concurrency subagent workflow with a conservative low-concurrency Codex workflow
 - uses Codex itself only for a few sample chunks and final high-risk review
-- adds a local-model draft stage, defaulting to `oMLX`, with `gemma-4-e4b-it-mxfp8`
-- adds a local-model refinement stage, defaulting to `oMLX`, with `gemma-4-26b-a4b-it-mxfp4`
+- adds a local-model draft stage, defaulting to `oMLX`, with `gemma-4-e4b-it-8bit`
+- adds a local-model refinement stage, defaulting to `oMLX`, with `gemma-4-26b-a4b-it-4bit`
 - adds `chunk_audit.py` to classify suspicious chunks and promote safe refined outputs
 - preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_` instead of writing only one translation layer
 
@@ -93,8 +93,8 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 Current local model policy:
 
 - when running through `oMLX`, keep only two resident local models by default:
-  - `gemma-4-e4b-it-mxfp8` for fast draft generation
-  - `gemma-4-26b-a4b-it-mxfp4` for heavier refinement or difficult review work
+  - `gemma-4-e4b-it-8bit` for fast draft generation
+  - `gemma-4-26b-a4b-it-4bit` for heavier refinement or difficult review work
 - choose between them by stage and quality/cost tradeoff, rather than keeping a larger rotating model set loaded
 
 ## Credits

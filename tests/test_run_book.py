@@ -52,6 +52,42 @@ class RunBookTests(unittest.TestCase):
         self.assertIn("preflight", report)
         run_step_mock.assert_not_called()
 
+    def test_returns_structured_failure_when_a_stage_fails(self):
+        with mock.patch.object(
+            run_book.preflight,
+            "run_preflight",
+            return_value={"status": "ok"},
+        ), mock.patch.object(
+            run_book,
+            "run_step",
+            side_effect=[
+                {"name": "convert", "status": "ok", "command": ["python3", "convert.py"]},
+                {
+                    "name": "draft",
+                    "status": "fail",
+                    "command": ["python3", "ollama_stage_translate.py"],
+                    "error": "model overloaded",
+                },
+            ],
+        ) as run_step_mock:
+            report = run_book.run_pipeline(input_file="novel.epub")
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(report["temp_dir"], "novel_temp")
+        self.assertEqual(
+            report["steps"],
+            [
+                {"name": "convert", "status": "ok", "command": ["python3", "convert.py"]},
+                {
+                    "name": "draft",
+                    "status": "fail",
+                    "command": ["python3", "ollama_stage_translate.py"],
+                    "error": "model overloaded",
+                },
+            ],
+        )
+        self.assertEqual(run_step_mock.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

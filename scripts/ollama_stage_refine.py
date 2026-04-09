@@ -17,7 +17,7 @@ from local_model_client import (
 from naer_terms import auto_select_datasets, check_term_mismatches, find_glossary_hits, render_glossary_block
 
 
-DEFAULT_MODEL = "gemma-4-26b-a4b-it-mxfp4"
+DEFAULT_MODEL = "gemma-4-26b-a4b-it-4bit"
 
 
 def discover_pending_refinements(temp_dir):
@@ -188,7 +188,11 @@ def repair_terminology_mismatches(
         return refined_text
     repaired = refined_text
     current_report = mismatch_report
-    for issue in mismatch_report["issues"]:
+    max_passes = len(mismatch_report["issues"])
+    for _ in range(max_passes):
+        if not current_report["issues"]:
+            break
+        issue = current_report["issues"][0]
         prompt = build_repair_prompt(
             source_text,
             repaired,
