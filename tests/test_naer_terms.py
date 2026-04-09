@@ -82,6 +82,24 @@ class OdsHelpersTests(unittest.TestCase):
             self.assertEqual(rows[0]["note"], "software")
             self.assertEqual(rows[0]["sheet_name"], "電子計算機名詞")
 
+    def test_expand_row_cells_caps_repeated_empty_padding_cells(self):
+        row = naer_terms.ET.fromstring(
+            """
+            <table:table-row
+                xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+                xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+                xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">
+              <table:table-cell office:value-type="string"><text:p>compiler</text:p></table:table-cell>
+              <table:table-cell table:number-columns-repeated="1024" office:value-type="string"><text:p></text:p></table:table-cell>
+            </table:table-row>
+            """
+        )
+
+        cells = naer_terms._expand_row_cells(row)
+
+        self.assertEqual(cells[0], "compiler")
+        self.assertEqual(len(cells), 17)
+
 
 class ImportAndQueryTests(unittest.TestCase):
     def _create_sample_ods(self, temp_path):
@@ -119,6 +137,40 @@ class ImportAndQueryTests(unittest.TestCase):
             with sqlite3.connect(db_path) as conn:
                 count = conn.execute("SELECT COUNT(*) FROM terms").fetchone()[0]
             self.assertEqual(count, 2)
+
+    def test_import_ods_to_sqlite_avoids_pipe_delimiter_hash_collisions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            ods_path = temp_path / "sample.ods"
+            ods_path.write_text("stub", encoding="utf-8")
+            db_path = temp_path / "terms.sqlite3"
+
+            with mock.patch.object(
+                naer_terms,
+                "parse_ods_rows",
+                return_value=[
+                    {"sheet_name": "s", "source_term": "t", "target_term": "u", "note": ""},
+                    {"sheet_name": "baz|s", "source_term": "t", "target_term": "u", "note": ""},
+                ],
+            ):
+                first = naer_terms.import_ods_to_sqlite(
+                    ods_path,
+                    db_path,
+                    dataset="foo|bar",
+                    domain="baz",
+                )
+                second = naer_terms.import_ods_to_sqlite(
+                    ods_path,
+                    db_path,
+                    dataset="foo",
+                    domain="bar",
+                )
+
+            self.assertEqual(first["rows_inserted"], 2)
+            self.assertEqual(second["rows_inserted"], 2)
+            with sqlite3.connect(db_path) as conn:
+                count = conn.execute("SELECT COUNT(*) FROM terms").fetchone()[0]
+            self.assertEqual(count, 4)
 
     def test_import_zip_dir_to_sqlite_imports_multiple_archives(self):
         with tempfile.TemporaryDirectory() as temp_dir:

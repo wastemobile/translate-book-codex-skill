@@ -18,6 +18,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from manifest import validate_for_merge
+from runtime_paths import resolve_python_executable
 
 # Try to import BeautifulSoup for TOC generation
 try:
@@ -926,7 +927,7 @@ def generate_format(html_file, temp_dir, output_ext, lang_attr, cover=None):
         return None
 
     try:
-        cmd = ["python3", publish_script, html_file, "-o", output_file, "--lang", lang_attr]
+        cmd = [resolve_python_executable(), publish_script, html_file, "-o", output_file, "--lang", lang_attr]
         if cover and output_ext == ".epub":
             cmd.extend(["--cover", cover])
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)

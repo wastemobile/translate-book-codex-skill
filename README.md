@@ -1,13 +1,13 @@
 # translate-book-codex-skill
 
-Version: `0.3.0`
+Version: `0.4.0`
 
 Codex skill for translating whole books through a four-stage workflow.
 
 The recommended interface is now a single entrypoint that performs preflight automatically:
 
 ```bash
-python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
+$HOME/.codex/translate-book/.venv/bin/python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
   --input-file ./novel.epub \
   --target-lang zh-TW \
   --output-formats epub
@@ -78,23 +78,32 @@ Compared with the upstream Claude version, this Codex version keeps the same pre
 
 - replaces the original high-concurrency subagent workflow with a conservative low-concurrency Codex workflow
 - uses Codex itself only for a few sample chunks and final high-risk review
-- adds a local-model draft stage, defaulting to `oMLX`, with `gemma-4-e4b-it-mxfp8`
-- adds a local-model refinement stage, defaulting to `oMLX`, with `gemma-4-26b-a4b-it-mxfp4`
+- adds a local-model draft stage, defaulting to `oMLX`, with `gemma-4-e4b-it-8bit`
+- adds a local-model refinement stage, defaulting to `oMLX`, with `gemma-4-26b-a4b-it-4bit`
 - adds `chunk_audit.py` to classify suspicious chunks and promote safe refined outputs
 - preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_` instead of writing only one translation layer
 
-## Version 0.3.0
+## Version 0.4.0
 
 - default local model backend is now `oMLX`, with `Ollama` retained as a fallback provider
 - Stage 2 and Stage 3 accept provider-aware local API configuration through CLI flags or environment variables
 - developer test dependency setup now includes `requirements-dev.txt` for `pytest`
 - rebuilt translated `epub` files now preserve the original source `epub` cover image
+- shared Codex runtime support now uses a fixed venv under `~/.codex/translate-book/.venv`
+- shared glossary DB support now defaults to `~/.codex/translate-book/data/terms.sqlite3`
+- globally installed skill now points at this repository through `~/.codex/skills/translate-book`
+- `run_book.py` and `merge_and_build.py` now use the shared runtime automatically instead of assuming the shell's `python3`
+- `zh-TW` preflight now treats `OpenCC` and the shared glossary DB as required dependencies instead of silently degrading
+- `run_book.py` and `preflight.py` now read `LOCAL_LLM_API_KEY` automatically when `--api-key` is omitted
+- the default resident `oMLX` model pair is fixed to:
+  - Stage 2 draft: `gemma-4-e4b-it-8bit`
+  - Stage 3 refine: `gemma-4-26b-a4b-it-4bit`
 
 Current local model policy:
 
 - when running through `oMLX`, keep only two resident local models by default:
-  - `gemma-4-e4b-it-mxfp8` for fast draft generation
-  - `gemma-4-26b-a4b-it-mxfp4` for heavier refinement or difficult review work
+  - `gemma-4-e4b-it-8bit` for fast draft generation
+  - `gemma-4-26b-a4b-it-4bit` for heavier refinement or difficult review work
 - choose between them by stage and quality/cost tradeoff, rather than keeping a larger rotating model set loaded
 
 ## Credits
@@ -104,22 +113,22 @@ Current local model policy:
 
 ## Requirements
 
-- `python3`
+- shared Python runtime: `~/.codex/translate-book/.venv/bin/python3`
 - `pandoc`
 - `ebook-convert`
 - Required Python packages:
   - `pypandoc`
-- Recommended Python packages:
   - `beautifulsoup4`
   - `markdown`
-- Optional Python packages:
-  - `opencc-python-reimplemented` for `zh-TW` regional lexicon normalization during audit
+  - `opencc-python-reimplemented`
 - Local model runtime:
   - default: `oMLX` at `http://127.0.0.1:8000/v1`
   - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
 - Recommended local models:
   - `gemma-4-e4b-it-8bit`
   - `gemma-4-26b-a4b-it-4bit`
+- Shared glossary DB:
+  - default: `~/.codex/translate-book/data/terms.sqlite3`
 
 ## Preflight
 
@@ -128,7 +137,7 @@ The normal entrypoint is now `scripts/run_book.py`. It automatically runs prefli
 Typical usage from any working directory:
 
 ```bash
-python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
+$HOME/.codex/translate-book/.venv/bin/python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/run_book.py \
   --input-file ./novel.epub \
   --target-lang zh-TW \
   --output-formats epub
@@ -140,17 +149,59 @@ Default behavior:
 - API base: `http://127.0.0.1:8000/v1`
 - Stage 2 model: `gemma-4-e4b-it-8bit`
 - Stage 3 model: `gemma-4-26b-a4b-it-4bit`
+- glossary DB: `~/.codex/translate-book/data/terms.sqlite3`
 - pipeline: `preflight -> convert -> draft -> refine -> audit --promote -> merge/build`
+
+## Global Skill Setup
+
+The intended day-to-day interface is no longer "remember a Python command". It is:
+
+```text
+請用 translate-book 技能把 ./book.epub 翻成繁體中文，輸出 epub
+```
+
+To make that work consistently from any `~/lab/...` book directory, keep the globally installed skill as a symlink to this repository:
+
+```bash
+~/.codex/skills/translate-book -> /Users/yoyodyne/lab/translate-book-codex-skill
+```
+
+This repository includes a bootstrap script that provisions the shared runtime, shared glossary DB, and the global skill symlink:
+
+```bash
+python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/bootstrap_shared_runtime.py \
+  --seed-glossary-from /path/to/terms.sqlite3
+```
+
+Operational notes:
+
+- if `~/.codex/skills/translate-book` points somewhere else, Codex may load an older copy of the skill
+- a new Codex session is the safest way to ensure skill discovery sees a freshly updated symlink
+- you should not install Python dependencies separately inside each book's working directory
+- the shared runtime is the supported installation target for Python dependencies used by this skill
+
+## User Notes
+
+When actually translating books, pay attention to these operational requirements:
+
+- for `zh-TW`, preflight now fails if `OpenCC` is unavailable
+- for `zh-TW`, preflight now fails if the shared glossary DB is missing
+- if your local `oMLX` endpoint requires authentication, set `LOCAL_LLM_API_KEY` once in your shell profile instead of passing `--api-key` every time
+- `LOCAL_LLM_PROVIDER`, `LOCAL_LLM_API_BASE`, and `LOCAL_LLM_API_KEY` are read automatically by the stage scripts and the preflight entrypoint
+- if you override the Python interpreter with `TRANSLATE_BOOK_PYTHON`, make sure that interpreter can import `pypandoc`, `beautifulsoup4`, `markdown`, and `opencc`
+- if you override the glossary path with `TRANSLATE_BOOK_GLOSSARY_DB`, make sure the file already exists before starting a long run
 
 Only override values when needed, for example a custom model or different output formats.
 
 If you want to run the checks by themselves first, use:
 
 ```bash
-python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/preflight.py \
+$HOME/.codex/translate-book/.venv/bin/python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/preflight.py \
   --input-file ./book.epub \
   --stage2-model gemma-4-e4b-it-8bit \
   --stage3-model gemma-4-26b-a4b-it-4bit \
+  --glossary-db "$HOME/.codex/translate-book/data/terms.sqlite3" \
+  --require-opencc \
   --api-base http://127.0.0.1:8000/v1 \
   --api-key "$LOCAL_LLM_API_KEY"
 ```
@@ -163,8 +214,9 @@ This check verifies:
 - required and optional Python modules are visible
 - the local model API is reachable
 - the requested Stage 2 and Stage 3 model IDs are actually exposed by the server
-
-If `OpenCC` is unavailable, preflight returns a warning instead of a hard failure. The book can still be translated, but audit-stage `zh-TW` regional lexicon normalization will be skipped.
+- the shared glossary DB exists
+- the shared Python runtime has the required modules
+For `zh-TW`, `OpenCC` is treated as a required dependency. If it is unavailable, preflight fails instead of silently skipping regional lexicon normalization.
 
 ## Repository Layout
 
@@ -262,11 +314,10 @@ python3 scripts/chunk_audit.py \
 
 Dependency note:
 
-- OpenCC is an optional dependency for regional lexicon normalization
-- install a Python OpenCC runtime such as `opencc-python-reimplemented` if you want this audit pass to perform regional lexicon detection and auto-fix work
+- `opencc-python-reimplemented` is part of the required shared runtime dependency set
+- for `zh-TW` workflows, OpenCC is no longer treated as optional during preflight
 
-If OpenCC is not installed, the regional lexicon pass degrades gracefully and leaves the chunk unchanged while still returning a structured audit report.
-That report includes a `regional_opencc_available` signal in the chunk-level and temp-dir summaries so you can see whether the backend was available when the report was generated.
+For non-`zh-TW` workflows, the audit step can still degrade gracefully if OpenCC is missing. For `zh-TW`, the run should not start until OpenCC is available in the shared runtime.
 
 ## Current vs Pending
 
@@ -385,3 +436,21 @@ Examples:
 This repository is the development source for the locally installed skill at:
 
 `~/.codex/skills/translate-book`
+
+## Release Process
+
+Versioning now follows normal release tags in the form `vX.Y.Z`.
+
+The repository includes a GitHub Actions workflow that creates a GitHub Release whenever a matching tag is pushed:
+
+- example tag: `v0.4.0`
+- source-of-truth version file: `VERSION`
+
+For each future release:
+
+1. update `VERSION`
+2. update the version section in `README.md`
+3. commit and push the release commit
+4. create and push a tag such as `v0.5.0`
+
+Once the tag reaches GitHub, the Releases tab should show the version normally.

@@ -224,9 +224,15 @@ def import_ods_to_sqlite(
             normalized_source = normalize_term(row["source_term"])
             row_hash = hashlib.sha256(
                 json.dumps(
-                    [dataset, domain, row["sheet_name"], normalized_source, row["target_term"].strip()],
+                    [
+                        dataset,
+                        domain,
+                        row["sheet_name"],
+                        normalized_source,
+                        row["target_term"].strip(),
+                    ],
                     ensure_ascii=False,
-                ).encode()
+                ).encode("utf-8")
             ).hexdigest()
             conn.execute(
                 """

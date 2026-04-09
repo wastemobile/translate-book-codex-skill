@@ -1,3 +1,4 @@
+import inspect
 import sys
 import unittest
 from pathlib import Path
@@ -12,6 +13,10 @@ import zh_variant_lexicon  # noqa: E402
 
 
 class OpenCCWrapperTests(unittest.TestCase):
+    def test_source_does_not_repeat_guanyu_prefix_literal(self):
+        source = inspect.getsource(zh_variant_lexicon)
+        self.assertEqual(source.count('"关于",'), 1)
+
     def test_default_config_targets_simplified_to_taiwan_conversion(self):
         self.assertEqual(
             zh_variant_lexicon.DEFAULT_OPENCC_CONFIG,
