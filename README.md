@@ -225,9 +225,30 @@ Upstream:
 - original workflow: `deusyu/translate-book`
 - upstream repository: https://github.com/deusyu/translate-book
 
+## Third-Party Licenses
+
+This project uses third-party software and data sources in the translation workflow, including OpenCC-related tooling and NAER terminology data.
+
+OpenCC-related components:
+
+- Python package used in the shared runtime: `opencc-python-reimplemented`
+- Upstream OpenCC project: https://github.com/BYVoid/OpenCC
+- OpenCC license: Apache License 2.0
+
+NAER terminology data:
+
+- Data source: National Academy for Educational Research (NAER) Term Search / 樂詞網
+- Source site: https://terms.naer.edu.tw/
+- Open data statement: https://terms.naer.edu.tw/mysite/about/2/
+- Attribution note: use of NAER data should include source attribution
+- project third-party license record: `./THIRD_PARTY_LICENSES.md`
+
+When redistributing builds, packaged environments, or derived data artifacts that include these third-party components or source data, keep the applicable license, attribution, and notice obligations with that distribution.
+
 ## Repository Layout
 
 - `SKILL.md`: Codex skill instructions
+- `THIRD_PARTY_LICENSES.md`: third-party dependency and license record
 - `scripts/`: conversion, translation-stage, audit, and packaging scripts
 - `tests/`: unit tests for the vendored pipeline and provider-flexible local model stages
 - `docs/superpowers/`: design specs and implementation plans
