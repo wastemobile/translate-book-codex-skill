@@ -28,12 +28,12 @@ class PreflightTests(unittest.TestCase):
             ) as fetch_model_ids_mock:
                 find_executable_mock.side_effect = lambda name: None if name == "pandoc" else f"/usr/bin/{name}"
                 find_module_mock.side_effect = lambda name, python_executable=None: name not in {"opencc", "markdown"}
-                fetch_model_ids_mock.return_value = ["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-4bit"]
+                fetch_model_ids_mock.return_value = ["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-8bit"]
 
                 report = preflight.run_preflight(
                     input_file=str(book_path),
                     stage2_model="gemma-4-e4b-it-8bit",
-                    stage3_model="gemma-4-26b-a4b-it-4bit",
+                    stage3_model="gemma-4-26b-a4b-it-8bit",
                     api_base="http://127.0.0.1:8000/v1",
                     api_key="kr4fi8",
                     python_executable="/shared/python",
@@ -60,7 +60,7 @@ class PreflightTests(unittest.TestCase):
             with mock.patch.object(preflight, "find_executable", return_value="/usr/bin/tool"), mock.patch.object(
                 preflight, "find_python_module", return_value=True
             ), mock.patch.object(
-                preflight, "fetch_model_ids", return_value=["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-4bit"]
+                preflight, "fetch_model_ids", return_value=["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-8bit"]
             ):
                 report = preflight.run_preflight(
                     input_file=str(book_path),
@@ -84,7 +84,7 @@ class PreflightTests(unittest.TestCase):
             ), mock.patch.object(
                 preflight, "find_python_module", return_value=True
             ), mock.patch.object(
-                preflight, "fetch_model_ids", return_value=["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-4bit"]
+                preflight, "fetch_model_ids", return_value=["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-8bit"]
             ) as fetch_mock:
                 report = preflight.run_preflight(
                     input_file=str(book_path),
@@ -99,7 +99,7 @@ class PreflightTests(unittest.TestCase):
         response = {
             "data": [
                 {"id": "gemma-4-e4b-it-8bit"},
-                {"id": "gemma-4-26b-a4b-it-4bit"},
+                {"id": "gemma-4-26b-a4b-it-8bit"},
             ]
         }
 
@@ -111,7 +111,7 @@ class PreflightTests(unittest.TestCase):
         with mock.patch.object(preflight.request, "urlopen", return_value=mock_response) as urlopen_mock:
             model_ids = preflight.fetch_model_ids("http://127.0.0.1:8000/v1", api_key="kr4fi8")
 
-        self.assertEqual(model_ids, ["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-4bit"])
+        self.assertEqual(model_ids, ["gemma-4-e4b-it-8bit", "gemma-4-26b-a4b-it-8bit"])
         headers = dict(urlopen_mock.call_args.args[0].header_items())
         self.assertEqual(headers["Authorization"], "Bearer kr4fi8")
 

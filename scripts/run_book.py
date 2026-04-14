@@ -19,8 +19,10 @@ DEFAULT_API_BASE = "http://127.0.0.1:8000/v1"
 # These values align with the defaults in ollama_stage_translate.py and
 # ollama_stage_refine.py so that preflight validates the same IDs the stages use.
 DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
-DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit"
+DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-8bit"
 DEFAULT_GLOSSARY_DB = resolve_glossary_db_path()
+DEFAULT_GENRE = "nonfiction"
+DEFAULT_PARALLELISM = "auto"
 
 
 def derive_temp_dir(input_file):
@@ -45,8 +47,9 @@ def run_pipeline(
     api_key=None,
     stage2_model=DEFAULT_STAGE2_MODEL,
     stage3_model=DEFAULT_STAGE3_MODEL,
-    parallelism=1,
+    parallelism=DEFAULT_PARALLELISM,
     glossary_db=DEFAULT_GLOSSARY_DB,
+    genre=DEFAULT_GENRE,
 ):
     api_key = resolve_api_key(api_key)
     python_executable = resolve_python_executable()
@@ -93,6 +96,8 @@ def run_pipeline(
         api_base,
         "--parallelism",
         str(parallelism),
+        "--genre",
+        genre,
         "--glossary-db",
         glossary_db,
         "--glossary-auto-select",
@@ -119,6 +124,8 @@ def run_pipeline(
         api_base,
         "--parallelism",
         str(parallelism),
+        "--genre",
+        genre,
         "--glossary-db",
         glossary_db,
         "--glossary-auto-select",
@@ -182,7 +189,8 @@ def main():
     parser.add_argument("--api-key", default=resolve_api_key())
     parser.add_argument("--stage2-model", default=DEFAULT_STAGE2_MODEL)
     parser.add_argument("--stage3-model", default=DEFAULT_STAGE3_MODEL)
-    parser.add_argument("--parallelism", type=int, default=1)
+    parser.add_argument("--parallelism", default=DEFAULT_PARALLELISM)
+    parser.add_argument("--genre", choices=("fiction", "nonfiction"), default=DEFAULT_GENRE)
     parser.add_argument("--glossary-db", default=DEFAULT_GLOSSARY_DB)
     args = parser.parse_args()
     print(
@@ -198,6 +206,7 @@ def main():
                 stage3_model=args.stage3_model,
                 parallelism=args.parallelism,
                 glossary_db=args.glossary_db,
+                genre=args.genre,
             ),
             ensure_ascii=False,
             indent=2,

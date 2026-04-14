@@ -5,8 +5,8 @@
 將 `deusyu/translate-book` 的 Claude Code Skill 改寫為可重複使用的 Codex Skill，保留原有前後處理與電子書打包流程，並將中段翻譯流程改為四階段混合式編排：
 
 1. 內建大模型先翻少量 chunks 作為基準樣本
-2. 本機 `gemma-4-e4b-it-mxfp8` 進行快速初譯
-3. 本機 `gemma4:26b` 進行逐 chunk 細修
+2. 本機 `gemma-4-e4b-it-8bit` 進行快速初譯
+3. 本機 `gemma-4-26b-a4b-it-8bit` 進行逐 chunk 細修
 4. 內建大模型對高風險 chunks 做最後檢查與潤飾
 
 並行策略以品質與穩定性為優先，預設單線，通常不超過 2 個並行任務，只有品質穩定時才允許升到 3。
@@ -80,7 +80,7 @@ translate-book/
 
 ### Stage 2: Fast Draft Translation
 
-由本機 `gemma-4-e4b-it-mxfp8` 進行全量初譯。
+由本機 `gemma-4-e4b-it-8bit` 進行全量初譯。
 
 - 輸入：`chunk*.md`
 - 輸出：`draft_chunk*.md`
@@ -88,7 +88,7 @@ translate-book/
 
 ### Stage 3: Local Refinement
 
-由本機 `gemma4:26b` 針對每個 `draft_chunk*.md` 細修。
+由本機 `gemma-4-26b-a4b-it-8bit` 針對每個 `draft_chunk*.md` 細修。
 
 - 輸入：原文 `chunk*.md` + 初譯 `draft_chunk*.md`
 - 輸出：`refined_chunk*.md`
@@ -111,9 +111,9 @@ translate-book/
 - `sample_chunk0001.md`
   - 第 1 階段大模型建立的樣本譯文，只存在於少量樣本
 - `draft_chunk0001.md`
-  - 第 2 階段 `gemma-4-e4b-it-mxfp8` 初譯
+  - 第 2 階段 `gemma-4-e4b-it-8bit` 初譯
 - `refined_chunk0001.md`
-  - 第 3 階段 `gemma4:26b` 細修
+  - 第 3 階段 `gemma-4-26b-a4b-it-8bit` 細修
 - `output_chunk0001.md`
   - 最終輸出，唯一參與 merge/build 的譯文
 
@@ -182,12 +182,12 @@ Stage 2 與 Stage 3 皆採保守重試：
 
 - 每個 chunk 最多 2 次
 - 若 Stage 2 失敗：
-  - 重跑一次 `gemma-4-e4b-it-mxfp8`
+  - 重跑一次 `gemma-4-e4b-it-8bit`
   - 再失敗則交由 audit 標記
 - 若 Stage 3 失敗：
   - 保留 `draft_`
   - 不覆蓋成更差的 `refined_`
-  - 再重跑一次 `gemma4:26b`
+  - 再重跑一次 `gemma-4-26b-a4b-it-8bit`
 - 若 Stage 4 判定 `refined_` 已可用：
   - 直接原樣寫成 `output_`
   - 不必潤句重寫

@@ -1,6 +1,6 @@
 # translate-book-codex-skill
 
-Version: `0.4.0`
+Version: `0.5.0`
 
 Codex skill for translating whole books through a four-stage workflow:
 
@@ -15,10 +15,13 @@ This repository is the development source for the locally installed skill at:
 `translate-book-codex-skill` is a practical long-form translation workflow for whole books and ebooks.
 It keeps the upstream conversion and packaging pipeline, but changes the translation orchestration into a mixed workflow:
 
+- Codex stays in the front-controller role: it chooses parameters, runs preflight, starts/resumes long local stages, watches reports, and only intervenes directly for style anchoring and risky chunks.
 - Codex handles a small number of representative sample chunks to anchor style and terminology.
 - a fast local model produces first-pass translations chunk by chunk
 - a stronger local model rewrites each draft into a cleaner and more consistent translation
 - an audit stage promotes safe chunks and flags risky ones for manual or Codex review
+
+The local draft/refine stages are designed to run in the background for a long time. By default they use conservative automatic parallelism, lowering concurrency when the machine is busy and favoring stable output over speed.
 
 The recommended interface is now a single entrypoint that performs preflight automatically:
 
@@ -39,6 +42,8 @@ The manual stage-by-stage commands remain available for debugging and resume wor
 - shared runtime under `~/.codex/translate-book/.venv`
 - shared glossary DB under `~/.codex/translate-book/data/terms.sqlite3`
 - NAER-backed glossary import, lookup, prompt injection, and mismatch audit
+- stage-specific style prompts under `style_prompt/` for fiction and nonfiction draft/refine passes
+- conservative `--parallelism auto` for long local model stages
 - `zh-TW` regional wording audit powered by OpenCC during the audit stage
 - preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_`
 - rebuilt translated `epub` files reuse the original source `epub` cover image
@@ -97,7 +102,9 @@ Default behavior:
 - provider: `omlx`
 - API base: `http://127.0.0.1:8000/v1`
 - Stage 2 model: `gemma-4-e4b-it-8bit`
-- Stage 3 model: `gemma-4-26b-a4b-it-4bit`
+- Stage 3 model: `gemma-4-26b-a4b-it-8bit`
+- genre: `nonfiction` unless `--genre fiction` is specified
+- parallelism: `auto`, tuned for stability rather than maximum throughput
 - glossary DB: `~/.codex/translate-book/data/terms.sqlite3`
 - pipeline: `preflight -> convert -> draft -> refine -> audit --promote -> merge/build`
 
@@ -125,10 +132,11 @@ The conversion and packaging pipeline is inherited from the original `translate-
 
 Compared with the upstream Claude version, this Codex version keeps the same preprocessing and packaging pipeline, but changes the translation orchestration:
 
-- replaces the original high-concurrency subagent workflow with a conservative low-concurrency Codex workflow
-- uses Codex itself only for a few sample chunks and final high-risk review
+- makes Codex the main controller rather than a bulk translator: Codex supervises the pipeline, keeps long-running stages resumable, and uses direct translation effort only for a few sample chunks and final high-risk review
+- lets the local draft/refine stages run patiently in the background with conservative automatic parallelism
 - adds a local-model draft stage, defaulting to `oMLX`, with `gemma-4-e4b-it-8bit`
-- adds a local-model refinement stage, defaulting to `oMLX`, with `gemma-4-26b-a4b-it-4bit`
+- adds a local-model refinement stage, defaulting to `oMLX`, with `gemma-4-26b-a4b-it-8bit`
+- adds genre-aware style prompt injection for `fiction` and `nonfiction` during both draft and refine stages
 - adds `chunk_audit.py` to classify suspicious chunks and promote safe refined outputs
 - preserves intermediate files as `sample_`, `draft_`, `refined_`, and `output_` instead of writing only one translation layer
 
@@ -160,7 +168,7 @@ Examples:
   - fallback: `Ollama` at `http://127.0.0.1:11434/api/generate`
 - recommended local models:
   - `gemma-4-e4b-it-8bit`
-  - `gemma-4-26b-a4b-it-4bit`
+  - `gemma-4-26b-a4b-it-8bit`
 - shared glossary DB:
   - default: `~/.codex/translate-book/data/terms.sqlite3`
 
@@ -192,7 +200,7 @@ If you want to run the checks by themselves first, use:
 $HOME/.codex/translate-book/.venv/bin/python3 /Users/yoyodyne/lab/translate-book-codex-skill/scripts/preflight.py \
   --input-file ./book.epub \
   --stage2-model gemma-4-e4b-it-8bit \
-  --stage3-model gemma-4-26b-a4b-it-4bit \
+  --stage3-model gemma-4-26b-a4b-it-8bit \
   --glossary-db "$HOME/.codex/translate-book/data/terms.sqlite3" \
   --require-opencc \
   --api-base http://127.0.0.1:8000/v1 \
@@ -253,6 +261,21 @@ When redistributing builds, packaged environments, or derived data artifacts tha
 - `tests/`: unit tests for the vendored pipeline and provider-flexible local model stages
 - `docs/superpowers/`: design specs and implementation plans
 
+## Version 0.5.0
+
+Main release theme:
+
+- apply general-purpose style prompts by genre and stage: `fiction` and `nonfiction` each now have separate `draft` and `refine` prompts, and Stage 2/3 automatically inject the matching `style_prompt/<genre>_<stage>.md`
+
+Other changes:
+
+- add `--genre fiction|nonfiction` to the draft/refine stages and the `run_book.py` entrypoint; default genre is `nonfiction`
+- add conservative `--parallelism auto`, letting long local draft/refine runs adapt to system load and favor stable output over speed
+- clarify Codex's front-controller role: Codex supervises preflight, long-running local stages, audit, and final risky-chunk cleanup rather than brute-force translating whole books directly
+- move Stage 3's default model to `gemma-4-26b-a4b-it-8bit`, matching the current all-8bit oMLX resident model policy
+- add tests for style prompt injection, default 8bit model selection, `run_book.py` stage arguments, and automatic parallelism behavior
+- refresh README, skill instructions, agent notes, and historical design docs for the new model IDs and workflow
+
 ## Version 0.4.0
 
 - default local model backend is now `oMLX`, with `Ollama` retained as a fallback provider
@@ -267,13 +290,13 @@ When redistributing builds, packaged environments, or derived data artifacts tha
 - `run_book.py` and `preflight.py` now read `LOCAL_LLM_API_KEY` automatically when `--api-key` is omitted
 - the default resident `oMLX` model pair is fixed to:
   - Stage 2 draft: `gemma-4-e4b-it-8bit`
-  - Stage 3 refine: `gemma-4-26b-a4b-it-4bit`
+  - Stage 3 refine: `gemma-4-26b-a4b-it-8bit`
 
 Current local model policy:
 
 - when running through `oMLX`, keep only two resident local models by default:
   - `gemma-4-e4b-it-8bit` for fast draft generation
-  - `gemma-4-26b-a4b-it-4bit` for heavier refinement or difficult review work
+  - `gemma-4-26b-a4b-it-8bit` for heavier refinement or difficult review work
 - choose between them by stage and quality or cost tradeoff, rather than keeping a larger rotating model set loaded
 
 ## NAER Glossary V1
@@ -340,12 +363,14 @@ Translation-stage integration:
 ```bash
 python3 scripts/ollama_stage_translate.py \
   --temp-dir ./book_temp \
+  --genre nonfiction \
   --glossary-db ./test-output/naer/terms.sqlite3 \
   --glossary-dataset "電子計算機名詞" \
   --glossary-domain "computer-science"
 
 python3 scripts/ollama_stage_refine.py \
   --temp-dir ./book_temp \
+  --genre nonfiction \
   --glossary-db ./test-output/naer/terms.sqlite3 \
   --glossary-dataset "電子計算機名詞" \
   --glossary-domain "computer-science"
@@ -370,6 +395,9 @@ python3 scripts/ollama_stage_translate.py \
 
 Current reference and normalization hooks:
 
+- `style_prompt`:
+  - `fiction_draft.md`, `fiction_refine.md`, `nonfiction_draft.md`, and `nonfiction_refine.md` are injected into Stage 2 and Stage 3 prompts according to `--genre`
+  - the default genre is `nonfiction`; pass `--genre fiction` for novels and other fiction
 - `sample`:
   - style and terminology anchoring is currently done manually through the selected sample chunks
   - glossary references are not yet automatically injected at this stage
@@ -464,6 +492,8 @@ Not fully solved yet:
 Local stage overrides:
 
 - default provider is `omlx`
+- default parallelism is `auto`; it is intentionally conservative and may choose `1` when system load is high
+- use `--genre fiction` or `--genre nonfiction` to select the embedded style prompt family
 - use `--provider ollama` to fall back to Ollama
 - use `--api-base` and `--api-key` to point at a different local endpoint
 - environment variables `LOCAL_LLM_PROVIDER`, `LOCAL_LLM_API_BASE`, and `LOCAL_LLM_API_KEY` are supported

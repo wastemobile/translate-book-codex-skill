@@ -29,8 +29,8 @@ The current translation pipeline is:
 
 Relevant behavior today:
 
-- Stage 2 uses `gemma-4-e4b-it-mxfp8`
-- Stage 3 uses `gemma-4-26b-a4b-it-mxfp4`
+- Stage 2 uses `gemma-4-e4b-it-8bit`
+- Stage 3 uses `gemma-4-26b-a4b-it-8bit`
 - NAER-backed glossary retrieval injects chunk-level terminology references into Stage 2 and Stage 3 prompts
 - `chunk_audit.py` can flag `term_mismatch` cases after translation
 - regional lexicon normalization remains a separate audit-stage concern
@@ -73,7 +73,7 @@ This makes fine-tuning a behavioral optimization problem, not a dictionary-stora
 
 Model focus:
 
-- primarily `gemma-4-e4b-it-mxfp8`
+- primarily `gemma-4-e4b-it-8bit`
 
 Intent:
 
@@ -97,8 +97,8 @@ Limits:
 
 Model focus:
 
-- `gemma-4-e4b-it-mxfp8` as the fast candidate
-- `gemma-4-26b-a4b-it-mxfp4` as the heavier candidate
+- `gemma-4-e4b-it-8bit` as the fast candidate
+- `gemma-4-26b-a4b-it-8bit` as the heavier candidate
 
 Intent:
 
@@ -274,7 +274,7 @@ Reasoning:
 
 ## Model Comparison: E4B vs 26B
 
-### `gemma-4-e4b-it-mxfp8`
+### `gemma-4-e4b-it-8bit`
 
 Best suited for:
 
@@ -293,7 +293,7 @@ Expected weaknesses:
 - may plateau earlier on subtle contextual term decisions
 - may improve compliance less on long or complex chunks
 
-### `gemma-4-26b-a4b-it-mxfp4`
+### `gemma-4-26b-a4b-it-8bit`
 
 Best suited for:
 
@@ -440,9 +440,9 @@ Do not begin implementation unless all of the following are true:
 Future recommendation, if this work is pursued:
 
 1. keep retrieval-first architecture unchanged
-2. run a first feasibility experiment on `gemma-4-e4b-it-mxfp8` with parameter-efficient tuning
+2. run a first feasibility experiment on `gemma-4-e4b-it-8bit` with parameter-efficient tuning
 3. evaluate against real-book chunks using the current glossary and audit metrics
-4. only if E4B shows meaningful gains, run the same evaluation on `gemma-4-26b-a4b-it-mxfp4`
+4. only if E4B shows meaningful gains, run the same evaluation on `gemma-4-26b-a4b-it-8bit`
 5. adopt a tuned model only if gains are clear on real pipeline outputs, not just curated examples
 
 ## Non-Goals

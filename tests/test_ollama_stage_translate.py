@@ -27,6 +27,17 @@ class DiscoverPendingChunksTests(unittest.TestCase):
 
 
 class DraftTranslationPipelineTests(unittest.TestCase):
+    def test_build_prompt_includes_stage_style_prompt(self):
+        prompt = ollama_stage_translate.build_prompt(
+            "Hello.",
+            "Traditional Chinese",
+            genre="fiction",
+        )
+
+        self.assertIn("# 草譯階段 Style Prompt for fiction", prompt)
+        self.assertIn("SOURCE:", prompt)
+        self.assertIn("Hello.", prompt)
+
     def test_build_prompt_includes_glossary_block_when_present(self):
         prompt = ollama_stage_translate.build_prompt(
             "A compiler handles arithmetic.",

@@ -13,26 +13,26 @@
 
 **問題：**
 
-Stage 2/3 腳本的預設模型 ID 使用 `mxfp8`/`mxfp4` 後綴，
-但本地 MLX 伺服器實際提供的模型 ID 是 `8bit`/`4bit` 後綴。
+Stage 2/3 腳本曾使用舊的量化後綴，
+但本地 MLX 伺服器實際提供的模型 ID 是 `8bit` 後綴。
 
 ```python
 # ollama_stage_translate.py（修復前）
-DEFAULT_MODEL = "gemma-4-e4b-it-mxfp8"    # ← 錯誤
+DEFAULT_MODEL = "<舊 Stage 2 model ID>"    # ← 錯誤
 
 # ollama_stage_refine.py（修復前）
-DEFAULT_MODEL = "gemma-4-26b-a4b-it-mxfp4" # ← 錯誤
+DEFAULT_MODEL = "<舊 Stage 3 model ID>"    # ← 錯誤
 
 # run_book.py / preflight.py（原本已正確）
 DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
-DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit"
+DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-8bit"
 ```
 
-**後果：** Preflight 以正確的 `8bit`/`4bit` 名稱查詢 API，會通過；但 Stage 2/3
-在執行時以 `mxfp8`/`mxfp4` 發出請求，伺服器回傳 404 / model-not-found，
+**後果：** Preflight 以正確的 `8bit` 名稱查詢 API，會通過；但 Stage 2/3
+在執行時以舊模型 ID 發出請求，伺服器回傳 404 / model-not-found，
 整個翻譯流程在 preflight 通過後才於執行階段失敗，且沒有清楚的錯誤提示。
 
-**修復：** 將 Stage 腳本的 `DEFAULT_MODEL` 統一改為 `8bit`/`4bit`，
+**修復：** 將 Stage 腳本的 `DEFAULT_MODEL` 統一改為 `8bit`，
 與 `run_book.py`、`preflight.py` 及伺服器實際 model ID 對齊。
 
 ---
@@ -239,7 +239,7 @@ row_hash = hashlib.sha256(
 ```python
 # scripts/constants.py
 DEFAULT_STAGE2_MODEL = "gemma-4-e4b-it-8bit"
-DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-4bit"
+DEFAULT_STAGE3_MODEL = "gemma-4-26b-a4b-it-8bit"
 DEFAULT_PROVIDER = "omlx"
 DEFAULT_API_BASE = "http://127.0.0.1:8000/v1"
 ```
@@ -305,14 +305,14 @@ def load_config(temp_dir):
 {"name": "stage2_model", "status": "fail", "detail": "missing model id: gemma-4-e4b-it-8bit"}
 ```
 
-**原因：** Bug #1（已修復）。Stage 腳本使用 `mxfp8`/`mxfp4` 後綴，但伺服器實際 model ID 是 `8bit`/`4bit` 後綴。
+**原因：** Bug #1（已修復）。Stage 腳本曾使用舊量化後綴，但伺服器實際 model ID 是 `8bit` 後綴。
 
 **處理：** 升級到本 PR 後問題消失。臨時繞過方式：
 
 ```bash
 python3 scripts/run_book.py --input-file ./book.epub \
   --stage2-model gemma-4-e4b-it-8bit \
-  --stage3-model gemma-4-26b-a4b-it-4bit
+  --stage3-model gemma-4-26b-a4b-it-8bit
 ```
 
 ---

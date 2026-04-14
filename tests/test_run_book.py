@@ -31,7 +31,7 @@ class RunBookTests(unittest.TestCase):
         preflight_mock.assert_called_once_with(
             input_file="novel.epub",
             stage2_model="gemma-4-e4b-it-8bit",
-            stage3_model="gemma-4-26b-a4b-it-4bit",
+            stage3_model="gemma-4-26b-a4b-it-8bit",
             api_base="http://127.0.0.1:8000/v1",
             api_key=None,
             python_executable="/shared/python",
@@ -46,7 +46,15 @@ class RunBookTests(unittest.TestCase):
         merge_command = run_step_mock.call_args_list[4].args[1]
         self.assertEqual(convert_command[0], "/shared/python")
         self.assertIn("gemma-4-e4b-it-8bit", draft_command)
-        self.assertIn("gemma-4-26b-a4b-it-4bit", refine_command)
+        self.assertIn("gemma-4-26b-a4b-it-8bit", refine_command)
+        self.assertIn("--genre", draft_command)
+        self.assertIn("nonfiction", draft_command)
+        self.assertIn("--genre", refine_command)
+        self.assertIn("nonfiction", refine_command)
+        self.assertIn("--parallelism", draft_command)
+        self.assertIn("auto", draft_command)
+        self.assertIn("--parallelism", refine_command)
+        self.assertIn("auto", refine_command)
         self.assertIn(run_book.DEFAULT_GLOSSARY_DB, draft_command)
         self.assertIn("--glossary-auto-select", draft_command)
         self.assertIn("--repair-glossary-mismatches", refine_command)

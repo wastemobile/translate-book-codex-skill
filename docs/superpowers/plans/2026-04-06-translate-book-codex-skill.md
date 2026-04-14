@@ -125,7 +125,7 @@ Expected: failures for missing implementation.
 
 Core responsibilities:
 - enumerate source chunks
-- call the local model provider for `gemma-4-e4b-it-mxfp8`
+- call the local model provider for `gemma-4-e4b-it-8bit`
 - save outputs as `draft_chunk*.md`
 - retry failed chunks once
 - support configurable parallelism defaulting to `1`
@@ -174,7 +174,7 @@ Expected: failures for missing implementation.
 
 Core responsibilities:
 - pair source and draft files
-- call local Ollama HTTP API for `gemma4:26b`
+- call local Ollama HTTP API for `gemma-4-26b-a4b-it-8bit`
 - enforce low-temperature, faithful-edit prompts
 - reject empty or clearly degraded refine outputs
 

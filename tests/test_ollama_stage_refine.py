@@ -31,6 +31,18 @@ class DiscoverPendingRefinementsTests(unittest.TestCase):
 
 
 class RefinePipelineTests(unittest.TestCase):
+    def test_build_prompt_includes_stage_style_prompt(self):
+        prompt = ollama_stage_refine.build_prompt(
+            "Hello.",
+            "你好。",
+            "Traditional Chinese",
+            genre="fiction",
+        )
+
+        self.assertIn("# 潤飾階段 Style Prompt for fiction", prompt)
+        self.assertIn("SOURCE:", prompt)
+        self.assertIn("DRAFT:", prompt)
+
     def test_build_repair_prompt_targets_only_mismatched_terms(self):
         prompt = ollama_stage_refine.build_repair_prompt(
             "A compiler handles arithmetic. The assembly line is next.",
@@ -85,7 +97,7 @@ class RefinePipelineTests(unittest.TestCase):
         self.assertEqual(result, "你好，世界")
         refine_mock.assert_called_once_with(
             mock.ANY,
-            model="gemma-4-26b-a4b-it-4bit",
+            model="gemma-4-26b-a4b-it-8bit",
             provider="omlx",
             api_base="http://127.0.0.1:8000/v1",
             api_key=None,

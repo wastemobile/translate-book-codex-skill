@@ -15,9 +15,11 @@ from local_model_client import (
     write_text,
 )
 from naer_terms import auto_select_datasets, check_term_mismatches, find_glossary_hits, render_glossary_block
+from parallelism import resolve_parallelism
+from style_prompts import load_style_prompt
 
 
-DEFAULT_MODEL = "gemma-4-26b-a4b-it-4bit"
+DEFAULT_MODEL = "gemma-4-26b-a4b-it-8bit"
 
 
 def discover_pending_refinements(temp_dir):
@@ -45,9 +47,12 @@ def build_glossary_block(glossary_db, source_text, dataset=None, domain=None, hi
     return render_glossary_block(hits, high_confidence_only=high_confidence_only)
 
 
-def build_prompt(source_text, draft_text, target_lang, glossary_block=""):
+def build_prompt(source_text, draft_text, target_lang, glossary_block="", genre="nonfiction", style_prompt_dir=None):
     glossary_section = f"{glossary_block}\n\n" if glossary_block else ""
-    return f"""Refine this draft translation into natural {target_lang}.
+    style_prompt = load_style_prompt("refine", genre=genre, prompt_dir=style_prompt_dir)
+    return f"""{style_prompt}
+
+Refine this draft translation into natural {target_lang}.
 Be faithful to the source. Preserve markdown structure, links, image references, and footnotes.
 Do not summarize, do not omit content, and do not reorganize the document.
 If the draft is already correct, keep it close to the draft.
@@ -129,6 +134,8 @@ def generate_refinement(
     glossary_domain=None,
     glossary_auto_select=False,
     glossary_auto_max_datasets=2,
+    genre="nonfiction",
+    style_prompt_dir=None,
 ):
     glossary_dataset_filter = glossary_dataset
     if glossary_db and glossary_auto_select and not glossary_dataset:
@@ -151,6 +158,8 @@ def generate_refinement(
         draft_text,
         target_lang,
         glossary_block=glossary_block,
+        genre=genre,
+        style_prompt_dir=style_prompt_dir,
     )
     return generate_text(
         prompt,
@@ -241,6 +250,8 @@ def refine_one(
     glossary_auto_select=False,
     glossary_auto_max_datasets=2,
     repair_glossary_mismatches=False,
+    genre="nonfiction",
+    style_prompt_dir=None,
 ):
     source_text = read_text(item["source"])
     draft_text = read_text(item["draft"])
@@ -260,6 +271,8 @@ def refine_one(
                 glossary_domain=glossary_domain,
                 glossary_auto_select=glossary_auto_select,
                 glossary_auto_max_datasets=glossary_auto_max_datasets,
+                genre=genre,
+                style_prompt_dir=style_prompt_dir,
             ).strip()
             if not refined:
                 raise ValueError("empty refinement")
@@ -311,13 +324,15 @@ def process_temp_dir(
     glossary_auto_select=False,
     glossary_auto_max_datasets=2,
     repair_glossary_mismatches=False,
+    genre="nonfiction",
+    style_prompt_dir=None,
 ):
     pending = discover_pending_refinements(temp_dir)
     report = {"pending": len(pending), "completed": 0, "failed": 0, "failures": []}
     if not pending:
         return report
 
-    parallelism = max(1, min(int(parallelism), 3))
+    parallelism = resolve_parallelism(parallelism)
     if parallelism == 1:
         for item in pending:
             ok, info = refine_one(
@@ -334,6 +349,8 @@ def process_temp_dir(
                 glossary_auto_select=glossary_auto_select,
                 glossary_auto_max_datasets=glossary_auto_max_datasets,
                 repair_glossary_mismatches=repair_glossary_mismatches,
+                genre=genre,
+                style_prompt_dir=style_prompt_dir,
             )
             if ok:
                 report["completed"] += 1
@@ -359,6 +376,8 @@ def process_temp_dir(
                 glossary_auto_select,
                 glossary_auto_max_datasets,
                 repair_glossary_mismatches,
+                genre,
+                style_prompt_dir,
             ): item
             for item in pending
         }
@@ -381,7 +400,9 @@ def main():
     parser.add_argument("--provider", default=None)
     parser.add_argument("--api-base", default=None)
     parser.add_argument("--api-key", default=None)
-    parser.add_argument("--parallelism", type=int, default=1)
+    parser.add_argument("--parallelism", default="auto")
+    parser.add_argument("--genre", choices=("fiction", "nonfiction"), default="nonfiction")
+    parser.add_argument("--style-prompt-dir")
     parser.add_argument("--max-attempts", type=int, default=2)
     parser.add_argument("--glossary-db")
     parser.add_argument("--glossary-dataset")
@@ -406,6 +427,8 @@ def main():
         glossary_auto_select=args.glossary_auto_select,
         glossary_auto_max_datasets=args.glossary_auto_max_datasets,
         repair_glossary_mismatches=args.repair_glossary_mismatches,
+        genre=args.genre,
+        style_prompt_dir=args.style_prompt_dir,
     )
     print(report)
 

@@ -71,8 +71,8 @@ Default provider: `omlx`
 
 Default models remain stage-specific, but are updated to MLX-native names where appropriate:
 
-- Stage 2 default: `gemma-4-e4b-it-mxfp8`
-- Stage 3 default: `gemma-4-26b-a4b-it-mxfp4`
+- Stage 2 default: `gemma-4-e4b-it-8bit`
+- Stage 3 default: `gemma-4-26b-a4b-it-8bit`
 
 Users can still override model IDs explicitly.
 
